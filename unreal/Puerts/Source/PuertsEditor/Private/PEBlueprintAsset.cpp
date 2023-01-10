@@ -402,7 +402,7 @@ void UPEBlueprintAsset::AddFunction(FName InName, bool IsVoid, FPEGraphPinType I
 {
     InSetFlags &= ~InClearFlags;
     InSetFlags &= ~FUNC_Native;
-    const int32 NetMask = FUNC_Net | FUNC_NetMulticast | FUNC_NetServer | FUNC_NetClient | FUNC_NetReliable;
+    const int32 NetMask = FUNC_Net | FUNC_NetMulticast | FUNC_NetServer | FUNC_NetClient | FUNC_NetReliable | FUNC_NetServerAP;
     if (InSetFlags & NetMask)
     {
         InSetFlags |= FUNC_Net;

@@ -304,7 +304,7 @@ var global = global || (function () { return this; }());
         FUNC_RequiredAPI            : 0x00000002,    // Indicates this function is DLL exported/imported.
         FUNC_BlueprintAuthorityOnly: 0x00000004,   // Function will only run if the object has network authority
         FUNC_BlueprintCosmetic    : 0x00000008,   // Function is cosmetic in nature and should not be invoked on dedicated servers
-        // FUNC_                : 0x00000010,   // unused.
+        FUNC_NetServerAPI       : 0x00000010,   //  Allowing client to call remote server RPC on server-owned actors.
         // FUNC_                : 0x00000020,   // unused.
         FUNC_Net                : 0x00000040,   // Function is network-replicated.
         FUNC_NetReliable        : 0x00000080,   // Function should be sent reliably on the network.

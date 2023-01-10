@@ -980,6 +980,32 @@ function processFunctionMetaData(specifiers: Array<MetaSpecifier>, metaData: Map
                 CppImpName = value.Values[0];
             }
             break;
+
+        case 'ServerAPI'.toLowerCase(): 
+            if (!value.IsMetaKey() && !value.IsMetaKeyValue())
+            {
+                return markInvalidSince(`${value.Specifier} should be meta key`);
+            }
+
+            if (FunctionFlags & BigInt(UE.FunctionFlags.FUNC_BlueprintEvent))
+            {
+                return markInvalidSince('BlueprintImplementableEvent or BlueprintNativeEvent functions cannot be declared as Client or Server');
+            }
+
+            if (FunctionFlags & BigInt(UE.FunctionFlags.FUNC_Exec))
+            {
+                return markInvalidSince('Exec functions cannot be replicated!');
+            }
+
+            FunctionFlags |= BigInt(UE.FunctionFlags.FUNC_Net);
+            FunctionFlags |= BigInt(UE.FunctionFlags.FUNC_NetServer);
+            FunctionFlags |= BigInt(UE.FunctionFlags.FUNC_NetServerAPI);
+
+            if (value.IsMetaKeyValue())
+            {
+                CppImpName = value.Values[0];
+            }
+            break
         
         case 'Client'.toLowerCase(): 
             if (!value.IsMetaKey() && !value.IsMetaKeyValue())
