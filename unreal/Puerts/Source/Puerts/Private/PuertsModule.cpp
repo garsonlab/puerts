@@ -19,6 +19,7 @@
 #include "Misc/HotReloadInterface.h"
 #include "GameDelegates.h"
 #endif
+#include "TsDynamicInvokerEditor.h"
 #include "Commandlets/Commandlet.h"
 #include "TypeScriptGeneratedClass.h"
 
@@ -77,6 +78,11 @@ public:
     {
         if (Enabled)
         {
+            if (JsEnvEditor.IsValid())
+            {
+                JsEnvEditor->ReloadModule(ModuleName, JsSource);
+            }
+
             if (JsEnv.IsValid())
             {
                 // UE_LOG(PuertsModule, Warning, TEXT("Normal Mode ReloadModule"));
@@ -94,6 +100,11 @@ public:
     {
         if (Enabled)
         {
+            if (JsEnvEditor.IsValid())
+            {
+                JsEnvEditor->InitExtensionMethodsMap();
+            }
+
             if (JsEnv.IsValid())
             {
                 JsEnv->InitExtensionMethodsMap();
@@ -178,12 +189,31 @@ public:
         return Result;
     }
 
+    void MakeEditorJsEnv()
+    {
+        const UPuertsSetting& Settings = *GetDefault<UPuertsSetting>();
+        if (Settings.DebugEnable)
+        {
+            JsEnvEditor = MakeShared<puerts::FJsEnv>(std::make_shared<puerts::DefaultJSModuleLoader>(TEXT("JavaScript")),
+                std::make_shared<puerts::FDefaultLogger>(),
+                DebuggerPortFromCommandLine < 0 ? Settings.DebugPort + 1 : DebuggerPortFromCommandLine + 1);
+        }
+        else
+        {
+            JsEnvEditor = MakeShared<puerts::FJsEnv>();
+        }
+        JsEnvEditorInvoker = MakeShared<puerts::TsDynamicInvokerEditor>(JsEnvEditor->GetTsDynamicInvoker());
+    }
+
     virtual void MakeSharedJsEnv() override
     {
         const UPuertsSetting& Settings = *GetDefault<UPuertsSetting>();
 
         JsEnv.Reset();
         JsEnvGroup.Reset();
+        
+        if (JsEnvEditorInvoker.IsValid())
+            JsEnvEditorInvoker->ResetGameInvoker();
 
         NumberOfJsEnv = (Settings.NumberOfJsEnv > 1 && Settings.NumberOfJsEnv < 10) ? Settings.NumberOfJsEnv : 1;
 
@@ -203,6 +233,12 @@ public:
             if (Selector)
             {
                 JsEnvGroup->SetJsEnvSelector(Selector);
+            }
+
+            if (JsEnvEditor.IsValid() && JsEnvEditorInvoker.IsValid())
+            {
+                JsEnvEditorInvoker->SetGameInvoker(JsEnvGroup->GetTsDynamicInvoker());
+                JsEnvGroup->SetTsDynamicInvokerWrapper(JsEnvEditorInvoker);
             }
 
             //这种不支持等待
@@ -227,6 +263,12 @@ public:
                 JsEnv = MakeShared<puerts::FJsEnv>();
             }
 
+            if (JsEnvEditor.IsValid() && JsEnvEditorInvoker.IsValid())
+            {
+                JsEnvEditorInvoker->SetGameInvoker(JsEnv->GetTsDynamicInvoker());
+                JsEnv->SetTsDynamicInvokerWrapper(JsEnvEditorInvoker);
+            }
+
             if (Settings.WaitDebugger)
             {
                 JsEnv->WaitDebugger(Settings.WaitDebuggerTimeout);
@@ -247,6 +289,12 @@ public:
         return GetDefault<UPuertsSetting>()->IgnoreStructListOnDTS;
     }
 
+protected:
+    FDelegateHandle HandleToRegisterBPCompileEvents;
+    void RegisterBlueprintCompileEvents();
+	void OnBlueprintPreCompiled(UBlueprint* Blueprint);
+	void OnBlueprintCompiled();
+
 private:
     TSharedPtr<puerts::FJsEnv> JsEnv;
 
@@ -258,6 +306,9 @@ private:
 
     TSharedPtr<puerts::FJsEnvGroup> JsEnvGroup;
 
+    TSharedPtr<puerts::FJsEnv> JsEnvEditor;
+    TSharedPtr<puerts::TsDynamicInvokerEditor> JsEnvEditorInvoker;
+
     int32 DebuggerPortFromCommandLine = -1;
 };
 
@@ -267,6 +318,11 @@ void FPuertsModule::NotifyUObjectCreated(const class UObjectBase* InObject, int3
 {
     if (Enabled)
     {
+        if (JsEnvEditor.IsValid())
+        {
+            JsEnvEditor->TryBindJs(InObject);
+        }
+
         if (JsEnv.IsValid())
         {
             // UE_LOG(PuertsModule, Warning, TEXT("Normal Mode TryBindJs"));
@@ -313,29 +369,38 @@ void FPuertsModule::EndPIE(bool bIsSimulating)
     if (Enabled)
     {
         JsEnv.Reset();
-        for (TObjectIterator<UClass> It; It; ++It)
+        JsEnvGroup.Reset();
+
+        if (JsEnvEditor.IsValid() && JsEnvEditorInvoker.IsValid())
         {
-            UClass* Class = *It;
-            if (auto TsClass = Cast<UTypeScriptGeneratedClass>(Class))
+            JsEnvEditorInvoker->ResetGameInvoker();
+        }
+        else
+        {
+            for (TObjectIterator<UClass> It; It; ++It)
             {
-                TsClass->CancelRedirection();
-                TsClass->DynamicInvoker.Reset();
-            }
-            if (Class->ClassConstructor == UTypeScriptGeneratedClass::StaticConstructor)
-            {
-                auto SuperClass = Class->GetSuperClass();
-                while (SuperClass)
+                UClass* Class = *It;
+                if (auto TsClass = Cast<UTypeScriptGeneratedClass>(Class))
                 {
-                    if (SuperClass->ClassConstructor != UTypeScriptGeneratedClass::StaticConstructor)
-                    {
-                        Class->ClassConstructor = SuperClass->ClassConstructor;
-                        break;
-                    }
-                    SuperClass = SuperClass->GetSuperClass();
+                    TsClass->CancelRedirection();
+                    TsClass->DynamicInvoker.Reset();
                 }
                 if (Class->ClassConstructor == UTypeScriptGeneratedClass::StaticConstructor)
                 {
-                    Class->ClassConstructor = nullptr;
+                    auto SuperClass = Class->GetSuperClass();
+                    while (SuperClass)
+                    {
+                        if (SuperClass->ClassConstructor != UTypeScriptGeneratedClass::StaticConstructor)
+                        {
+                            Class->ClassConstructor = SuperClass->ClassConstructor;
+                            break;
+                        }
+                        SuperClass = SuperClass->GetSuperClass();
+                    }
+                    if (Class->ClassConstructor == UTypeScriptGeneratedClass::StaticConstructor)
+                    {
+                        Class->ClassConstructor = nullptr;
+                    }
                 }
             }
         }
@@ -410,6 +475,10 @@ void FPuertsModule::StartupModule()
     }
 #endif
 
+#if WITH_EDITOR
+    HandleToRegisterBPCompileEvents = FCoreDelegates::OnPostEngineInit.AddRaw(this, &FPuertsModule::RegisterBlueprintCompileEvents);
+#endif
+
 #if WITH_HOT_RELOAD
     IHotReloadInterface& HotReloadSupport = FModuleManager::LoadModuleChecked<IHotReloadInterface>("HotReload");
     HotReloadSupport.OnHotReload().AddLambda(
@@ -434,11 +503,51 @@ void FPuertsModule::StartupModule()
     //    });
 }
 
+void FPuertsModule::RegisterBlueprintCompileEvents()
+{
+#if WITH_EDITOR
+    if (HandleToRegisterBPCompileEvents.IsValid())
+    {
+        FCoreDelegates::OnPostEngineInit.Remove(HandleToRegisterBPCompileEvents);
+        HandleToRegisterBPCompileEvents.Reset();
+    }
+    if (GEditor)
+    {
+        GEditor->OnBlueprintPreCompile().AddRaw(this, &FPuertsModule::OnBlueprintPreCompiled);
+        GEditor->OnBlueprintCompiled().AddRaw(this, &FPuertsModule::OnBlueprintCompiled);
+    }
+#endif
+}
+
+void FPuertsModule::OnBlueprintPreCompiled(UBlueprint* Blueprint)
+{
+#if WITH_EDITOR
+    if (JsEnvEditor.IsValid())
+    {
+		JsEnvEditor->TryReleaseClassTemplate(Blueprint->GeneratedClass);
+    }
+#endif
+}
+
+void FPuertsModule::OnBlueprintCompiled()
+{
+#if WITH_EDITOR
+    if (Enabled)
+    {
+        // if (JsEnvEditor.IsValid())
+        // {
+        //     JsEnvEditor->RebindJs();
+        // }
+    }
+#endif
+}
+
 void FPuertsModule::Enable()
 {
     Enabled = true;
 
 #if WITH_EDITOR
+    MakeEditorJsEnv();
     if (IsRunningGame())
     {
         // 处理 Standalone 模式的情况
@@ -455,6 +564,8 @@ void FPuertsModule::Enable()
 void FPuertsModule::Disable()
 {
     Enabled = false;
+    JsEnvEditor.Reset();
+    JsEnvEditorInvoker.Reset();
     JsEnv.Reset();
     JsEnvGroup.Reset();
     GUObjectArray.RemoveUObjectCreateListener(static_cast<FUObjectArray::FUObjectCreateListener*>(this));
@@ -483,6 +594,13 @@ bool FPuertsModule::HandleSettingsSaved()
 
 void FPuertsModule::ShutdownModule()
 {
+#if WITH_EDITOR
+    if(GEditor)
+    {
+        GEditor->OnBlueprintPreCompile().RemoveAll(this);
+        GEditor->OnBlueprintCompiled().RemoveAll(this);
+    }
+#endif
 #if WITH_EDITOR
     UnregisterSettings();
     if (FLevelEditorModule* LevelEditor = FModuleManager::GetModulePtr<FLevelEditorModule>("LevelEditor"))

@@ -90,4 +90,22 @@ void FJsEnv::OnSourceLoaded(std::function<void(const FString&)> Callback)
     GameScript->OnSourceLoaded(Callback);
 }
 
+TSharedPtr<ITsDynamicInvoker> FJsEnv::GetTsDynamicInvoker()
+{
+    if (GameScript == nullptr)
+        return TSharedPtr<ITsDynamicInvoker>();
+
+    FJsEnvImpl* JsEnv = static_cast<FJsEnvImpl*>(GameScript.get());
+    return JsEnv->TsDynamicInvoker;
+}
+
+void FJsEnv::SetTsDynamicInvokerWrapper(TSharedPtr<ITsDynamicInvoker> InvokerWrapper)
+{
+    if (GameScript != nullptr)
+    {
+        FJsEnvImpl* JsEnv = static_cast<FJsEnvImpl*>(GameScript.get());
+        JsEnv->TsDynamicInvoker = InvokerWrapper;
+    }
+}
+
 }    // namespace puerts

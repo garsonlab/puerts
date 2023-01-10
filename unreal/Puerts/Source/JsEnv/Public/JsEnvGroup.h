@@ -12,6 +12,7 @@
 
 #include "CoreMinimal.h"
 #include "JsEnv.h"
+#include "TsDynamicInvoker.h"
 
 namespace puerts
 {
@@ -38,8 +39,13 @@ public:
 
     void SetJsEnvSelector(std::function<int(UObject*, int)> InSelector);
 
+    TSharedPtr<ITsDynamicInvoker> GetTsDynamicInvoker();
+
+    void SetTsDynamicInvokerWrapper(TSharedPtr<ITsDynamicInvoker> InvokerWrapper);
+
 private:
     std::vector<std::shared_ptr<IJsEnv>> JsEnvList;
+    TSharedPtr<ITsDynamicInvoker> TsDynamicInvoker;
 
     void Init();
 };

@@ -20,6 +20,7 @@
 #include "ObjectRetainer.h"
 #include "JSLogger.h"
 #include "JSModuleLoader.h"
+#include "TsDynamicInvoker.h"
 #if !defined(ENGINE_INDEPENDENT_JSENV)
 #include "ExtensionMethods.h"
 #endif
@@ -100,6 +101,10 @@ public:
     FString CurrentStackTrace();
 
     void InitExtensionMethodsMap();
+    
+    TSharedPtr<ITsDynamicInvoker> GetTsDynamicInvoker();
+
+    void SetTsDynamicInvokerWrapper(TSharedPtr<ITsDynamicInvoker> InvokerWrapper);
 
 private:
     std::unique_ptr<IJsEnv> GameScript;

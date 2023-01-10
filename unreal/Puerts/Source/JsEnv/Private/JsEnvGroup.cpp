@@ -123,6 +123,7 @@ void FJsEnvGroup::Init()
         JsEnvs.push_back(static_cast<FJsEnvImpl*>(JsEnvList[i].get()));
     }
     auto GroupDynamicInvoker = MakeShared<FGroupDynamicInvoker, ESPMode::ThreadSafe>(JsEnvs);
+    TsDynamicInvoker = GroupDynamicInvoker;
     for (int i = 0; i < JsEnvs.size(); i++)
     {
         JsEnvs[i]->TsDynamicInvoker = GroupDynamicInvoker;
@@ -178,6 +179,20 @@ void FJsEnvGroup::SetJsEnvSelector(std::function<int(UObject*, int)> InSelector)
     if (DynamicInvoker.IsValid())
     {
         static_cast<FGroupDynamicInvoker*>(DynamicInvoker.Get())->Selector = InSelector;
+    }
+}
+
+TSharedPtr<ITsDynamicInvoker> FJsEnvGroup::GetTsDynamicInvoker()
+{
+    return TsDynamicInvoker;
+}
+
+void FJsEnvGroup::SetTsDynamicInvokerWrapper(TSharedPtr<ITsDynamicInvoker> InvokerWrapper)
+{
+    for (int i = 0; i < JsEnvList.size(); i++)
+    {
+        FJsEnvImpl* JsEnv = static_cast<FJsEnvImpl*>(JsEnvList[i].get());
+        JsEnv->TsDynamicInvoker = InvokerWrapper;
     }
 }
 
