@@ -90,7 +90,7 @@ namespace puerts
                 printf("InitializeNodeWithArgs failed\n");
             }
         }
-        std::string Flags = "";
+        std::string Flags = "--stack_size=856";
 #if PUERTS_DEBUG
         Flags += "--expose-gc";
 #if PLATFORM_MAC
@@ -130,22 +130,26 @@ namespace puerts
 
         v8::Local<v8::Context> Context = node::NewContext(Isolate);
         // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]context");
+        v8::Local<v8::Object> Global = Context->Global();
 
         v8::Context::Scope ContextScope(Context);
         ResultInfo.Context.Reset(MainIsolate, Context);
+
+        v8::Local<v8::Value> Console = Global->Get(Context, FV8Utils::V8String(MainIsolate, "console")).ToLocalChecked();
 
         // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]isolatedata start");
         NodeIsolateData = node::CreateIsolateData(Isolate, NodeUVLoop, Platform, NodeArrayBufferAllocator.get()); // node::FreeIsolateData
     
         //kDefaultFlags = kOwnsProcessState | kOwnsInspector, if kOwnsInspector set, inspector_agent.cc:681 CHECK_EQ(start_io_thread_async_initialized.exchange(true), false) fail!
         NodeEnv = CreateEnvironment(NodeIsolateData, Context, *Args, *ExecArgs, node::EnvironmentFlags::kOwnsProcessState);
+        
+        Global->Set(Context, FV8Utils::V8String(MainIsolate, "console"), Console).Check();
 
         v8::MaybeLocal<v8::Value> LoadenvRet = node::LoadEnvironment(
             NodeEnv,
             "const publicRequire ="
             "  require('module').createRequire(process.cwd() + '/');"
-            "globalThis.require = publicRequire;"
-            "require('vm').runInThisContext(process.argv[1]);");
+            "globalThis.require = publicRequire;");
 
         if (LoadenvRet.IsEmpty())  // There has been a JS exception.
         {
@@ -154,7 +158,6 @@ namespace puerts
         // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]isolatedata done");
 
         MainIsolate->SetData(0, this);
-        v8::Local<v8::Object> Global = Context->Global();
 
         Global->Set(Context, FV8Utils::V8String(MainIsolate, "__tgjsEvalScript"), v8::FunctionTemplate::New(MainIsolate, &EvalWithPath)->GetFunction(Context).ToLocalChecked()).Check();
 
@@ -181,7 +184,7 @@ namespace puerts
             v8::V8::Initialize();
         }
 
-        std::string Flags = "--no-harmony-top-level-await";
+        std::string Flags = "--no-harmony-top-level-await --stack_size=856";
 #if PUERTS_DEBUG
         Flags += " --expose-gc";
 #if PLATFORM_MAC
@@ -470,7 +473,6 @@ namespace puerts
 
     void JSEngine::ReleaseJSFunction(JSFunction* InFunction)
     {
-        std::lock_guard<std::mutex> guard(JSFunctionsMutex);
         JSFunctions[InFunction->Index] = nullptr;
         delete InFunction;
     }
@@ -802,7 +804,6 @@ namespace puerts
     void JSEngine::LogicTick()
     {
 #if WITH_NODEJS
-
         v8::Isolate* Isolate = MainIsolate;
 #ifdef THREAD_SAFE
         v8::Locker Locker(Isolate);

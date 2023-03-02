@@ -1,7 +1,7 @@
 ![Logo](./doc/pic/puerts_logo.png)
 
 [![license](https://img.shields.io/badge/license-BSD_3_Clause-blue.svg)](https://github.com/Tencent/puerts/blob/master/LICENSE)
-[![unreal](https://img.shields.io/badge/unreal-v1.0.2-blue.svg)](https://github.com/Tencent/puerts/releases/tag/Unreal_v1.0.2)
+[![unreal](https://img.shields.io/badge/unreal-v1.0.3-blue.svg)](https://github.com/Tencent/puerts/releases/tag/Unreal_v1.0.3)
 [![unity](https://img.shields.io/badge/unity-v1.4.0-blue.svg)](doc/unity/zhcn/install.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-blue.svg)](https://github.com/Tencent/puerts/pulls)
 ![Unity_Test](https://github.com/Tencent/puerts/workflows/unity%20unittest/badge.svg)
@@ -45,8 +45,7 @@ PuerTS is a TypeScript programming solution within game engines. | PuerTS是游�
 
 ## Documentation | 官方文档
 
-* [Doc for Unity](https://puerts.github.io/unity/en/readme) | [Unity版文档](https://puerts.github.io/unity/zhcn/readme)
-* [Doc for UE](https://puerts.github.io/unreal/en/readme) | [UE版文档](https://puerts.github.io/unreal/zhcn/readme)
+* [click me](https://puerts.github.io)
 
 ## FAQ | 常见问题
 
@@ -64,7 +63,7 @@ PuerTS is a TypeScript programming solution within game engines. | PuerTS是游�
 ### Changelog
 
 * [unreal](doc/unreal/zhcn/changelog.md)
-* [unity](doc/unity/zhcn/changelog.md)
+* [unity](unity/Assets/core/upm/changelog-hans.md)
 
 ### Known issues | 已知问题与解决办法
 

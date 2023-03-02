@@ -292,6 +292,8 @@ v8::Local<v8::FunctionTemplate> FStructWrapper::ToFunctionTemplate(v8::Isolate* 
         Result->InstanceTemplate()->SetHandler(v8::NamedPropertyHandlerConfiguration(
             [](v8::Local<v8::Name> Property, const v8::PropertyCallbackInfo<v8::Value>& Info)
             {
+                if (Property->IsSymbol())
+                    return;
                 auto InnerIsolate = Info.GetIsolate();
                 auto Context = InnerIsolate->GetCurrentContext();
                 auto This = Info.This();
@@ -304,6 +306,14 @@ v8::Local<v8::FunctionTemplate> FStructWrapper::ToFunctionTemplate(v8::Isolate* 
                     {
                         Info.GetReturnValue().Set(This->Get(Context, FixedPropertyName).ToLocalChecked());
                         auto DescriptorVal = Proto->GetOwnPropertyDescriptor(Context, FixedPropertyName).ToLocalChecked();
+                        while (!DescriptorVal->IsObject())
+                        {
+                            auto Parent = Proto->GetPrototype();
+                            if (!Parent->IsObject())
+                                break;
+                            Proto = Parent.As<v8::Object>();
+                            DescriptorVal = Proto->GetOwnPropertyDescriptor(Context, FixedPropertyName).ToLocalChecked();
+                        }
                         if (DescriptorVal->IsObject())
                         {
                             auto Descriptor = DescriptorVal.As<v8::Object>();
@@ -326,6 +336,8 @@ v8::Local<v8::FunctionTemplate> FStructWrapper::ToFunctionTemplate(v8::Isolate* 
             },
             [](v8::Local<v8::Name> Property, v8::Local<v8::Value> Value, const v8::PropertyCallbackInfo<v8::Value>& Info)
             {
+                if (Property->IsSymbol())
+                    return;
                 auto InnerIsolate = Info.GetIsolate();
                 auto Context = InnerIsolate->GetCurrentContext();
                 auto This = Info.This();
@@ -337,12 +349,21 @@ v8::Local<v8::FunctionTemplate> FStructWrapper::ToFunctionTemplate(v8::Isolate* 
                     if (Proto->Has(Context, FixedPropertyName).FromMaybe(false))
                     {
                         auto _UnUsed = This->Set(Context, FixedPropertyName, Value);
+                        Info.GetReturnValue().Set(Value);
                         auto DescriptorVal = Proto->GetOwnPropertyDescriptor(Context, FixedPropertyName).ToLocalChecked();
+                        while (!DescriptorVal->IsObject())
+                        {
+                            auto Parent = Proto->GetPrototype();
+                            if (!Parent->IsObject())
+                                break;
+                            Proto = Parent.As<v8::Object>();
+                            DescriptorVal = Proto->GetOwnPropertyDescriptor(Context, FixedPropertyName).ToLocalChecked();
+                        }
                         if (DescriptorVal->IsObject())
                         {
                             auto Descriptor = DescriptorVal.As<v8::Object>();
                             // set first, mush set accessor of object
-                            This->SetAccessorProperty(Property,
+                            Proto->SetAccessorProperty(Property,
                                 Descriptor->Get(Context, FV8Utils::ToV8String(InnerIsolate, "get"))
                                     .ToLocalChecked()
                                     .As<v8::Function>(),
@@ -463,14 +484,6 @@ void FScriptStructWrapper::New(
         auto Self = Info.This();
         void* Memory = nullptr;
 
-        bool PassByPointer = false;
-
-        if (Info.Length() == 2 && Info[0]->IsExternal())    // Call by Native
-        {
-            Memory = v8::Local<v8::External>::Cast(Info[0])->Value();
-            PassByPointer = Info[1]->BooleanValue(Isolate);
-        }
-        else
         {
             if (ExternalInitialize)
             {
@@ -490,7 +503,7 @@ void FScriptStructWrapper::New(
                 }
             }
         }
-        FV8Utils::IsolateData<IObjectMapper>(Isolate)->BindStruct(this, Memory, Self, PassByPointer);
+        FV8Utils::IsolateData<IObjectMapper>(Isolate)->BindStruct(this, Memory, Self, false);
     }
     else
     {
@@ -561,15 +574,6 @@ void FClassWrapper::New(v8::Isolate* Isolate, v8::Local<v8::Context>& Context, c
         UObject* Object = nullptr;
         auto Class = static_cast<UClass*>(Struct.Get());
 
-        if (Info.Length() == 1 && Info[0]->IsExternal())    // Call by Native
-        {
-            Object = reinterpret_cast<UObject*>(v8::Local<v8::External>::Cast(Info[0])->Value());
-            if (!Object->IsValidLowLevel())
-            {
-                Object = nullptr;
-            }
-        }
-        else    // Call by js new
         {
             UObject* Outer = GetTransientPackage();
             FName Name = NAME_None;
@@ -594,7 +598,7 @@ void FClassWrapper::New(v8::Isolate* Isolate, v8::Local<v8::Context>& Context, c
             Object = NewObject<UObject>(Outer, Class, Name, ObjectFlags);
         }
 
-        FV8Utils::IsolateData<IObjectMapper>(Isolate)->Bind(Class, Object, Self);
+        FV8Utils::IsolateData<IObjectMapper>(Isolate)->Bind(this, Object, Self);
     }
     else
     {

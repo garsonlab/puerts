@@ -182,7 +182,11 @@ void FFunctionTranslator::Init(UFunction* InFunction, bool IsDelegate)
                                 }
                             }
 
+#if ENGINE_MINOR_VERSION > 0 && ENGINE_MAJOR_VERSION > 4
+                            Property->ImportText_Direct(**DefaultValuePtr, PropValuePtr, nullptr, PPF_None);
+#else
                             Property->ImportText(**DefaultValuePtr, PropValuePtr, PPF_None, nullptr);
+#endif
                         }
                     }
                 }
@@ -259,9 +263,14 @@ void FFunctionTranslator::SlowCall(v8::Isolate* Isolate, v8::Local<v8::Context>&
     const v8::FunctionCallbackInfo<v8::Value>& Info, UObject* CallObject, UFunction* CallFunction, void* Params)
 {
     if (Params)
+    {
         FMemory::Memzero(Params, ParamsBufferSize);
+    }
 
-    Call_ProcessParams(Isolate, Context, Info, Params, 0);
+    if (!Call_ProcessParams(Isolate, Context, Info, Params, 0))
+    {
+        return;
+    }
 
     CallObject->UObject::ProcessEvent(CallFunction, Params);
 

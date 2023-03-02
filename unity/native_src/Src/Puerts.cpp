@@ -104,6 +104,42 @@ V8_EXPORT FResultInfo * Eval(v8::Isolate *Isolate, const char *Code, const char*
     }
 }
 
+V8_EXPORT bool ClearModuleCache(v8::Isolate *Isolate, const char* Path)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    std::string key(Path);
+    if (key.size() == 0) 
+    {
+#if !WITH_QUICKJS
+        for (auto Iter = JsEngine->PathToModuleMap.begin(); Iter != JsEngine->PathToModuleMap.end(); ++Iter)
+        {
+            Iter->second.Reset();
+        }
+#else
+#endif
+        JsEngine->PathToModuleMap.clear();
+        return true;
+    } 
+    else 
+    {
+        auto finder = JsEngine->PathToModuleMap.find(key);
+        if (finder != JsEngine->PathToModuleMap.end()) 
+        {
+            JsEngine->PathToModuleMap.erase(key);
+#if !WITH_QUICKJS
+            finder->second.Reset();
+            return true;
+#else
+            v8::Isolate::Scope IsolateScope(Isolate);
+            v8::HandleScope HandleScope(Isolate);
+            JSContext* ctx = JsEngine->ResultInfo.Context.Get(Isolate)->context_;
+            return JS_ReleaseLoadedModule(ctx, Path);
+#endif
+        }
+    }
+    return false;
+}   
+
 V8_EXPORT int _RegisterClass(v8::Isolate *Isolate, int BaseTypeId, const char *FullName, CSharpConstructorCallback Constructor, CSharpDestructorCallback Destructor, int64_t Data)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
@@ -177,7 +213,7 @@ V8_EXPORT JsValueType GetJsValueType(v8::Isolate* Isolate, const v8::Value *Valu
         {
             auto Context = Isolate->GetCurrentContext();
             auto Outer = Value->ToObject(Context).ToLocalChecked();
-            auto MaybeValue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value"));
+            auto MaybeValue = Outer->Get(Context, 0);
             if (MaybeValue.IsEmpty())
             {
                 return puerts::NullOrUndefined;
@@ -208,7 +244,7 @@ V8_EXPORT double GetNumberFromValue(v8::Isolate* Isolate, v8::Value *Value, int 
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetNumberFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -224,7 +260,7 @@ V8_EXPORT void SetNumberToOutValue(v8::Isolate* Isolate, v8::Value *Value, doubl
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), v8::Number::New(Isolate, Number));
+        auto ReturnVal = Outer->Set(Context, 0, v8::Number::New(Isolate, Number));
     }
 }
 
@@ -234,7 +270,7 @@ V8_EXPORT double GetDateFromValue(v8::Isolate* Isolate, v8::Value *Value, int Is
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetDateFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -249,7 +285,7 @@ V8_EXPORT void SetDateToOutValue(v8::Isolate* Isolate, v8::Value *Value, double 
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), v8::Date::New(Context, Date).ToLocalChecked());
+        auto ReturnVal = Outer->Set(Context, 0, v8::Date::New(Context, Date).ToLocalChecked());
     }
 }
 
@@ -259,7 +295,7 @@ V8_EXPORT const char *GetStringFromValue(v8::Isolate* Isolate, v8::Value *Value,
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetStringFromValue(Isolate, *Realvalue, Length, false);
     }
     else
@@ -287,7 +323,7 @@ V8_EXPORT void SetStringToOutValue(v8::Isolate* Isolate, v8::Value *Value, const
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), FV8Utils::V8String(Isolate, Str));
+        auto ReturnVal = Outer->Set(Context, 0, FV8Utils::V8String(Isolate, Str));
     }
 }
 
@@ -297,7 +333,7 @@ V8_EXPORT int GetBooleanFromValue(v8::Isolate* Isolate, v8::Value *Value, int Is
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetBooleanFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -312,7 +348,7 @@ V8_EXPORT void SetBooleanToOutValue(v8::Isolate* Isolate, v8::Value *Value, int 
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), v8::Boolean::New(Isolate, B));
+        auto ReturnVal = Outer->Set(Context, 0, v8::Boolean::New(Isolate, B));
     }
 }
 
@@ -322,7 +358,7 @@ V8_EXPORT int ValueIsBigInt(v8::Isolate* Isolate, v8::Value *Value, int IsOut)
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return ValueIsBigInt(Isolate, *Realvalue, false);
     }
     else
@@ -338,7 +374,7 @@ V8_EXPORT int64_t GetBigIntFromValue(v8::Isolate* Isolate, v8::Value *Value, int
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetBigIntFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -354,7 +390,7 @@ V8_EXPORT void SetBigIntToOutValue(v8::Isolate* Isolate, v8::Value *Value, int64
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), v8::BigInt::New(Isolate, BigInt));
+        auto ReturnVal = Outer->Set(Context, 0, v8::BigInt::New(Isolate, BigInt));
     }
 }
 
@@ -364,7 +400,7 @@ V8_EXPORT const char* GetArrayBufferFromValue(v8::Isolate* Isolate, v8::Value *V
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetArrayBufferFromValue(Isolate, *Realvalue, Length, false);
     }
     else
@@ -397,7 +433,7 @@ V8_EXPORT void SetArrayBufferToOutValue(v8::Isolate* Isolate, v8::Value *Value, 
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
         v8::Local<v8::ArrayBuffer> Ab = puerts::NewArrayBuffer(Isolate, Bytes, Length);
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), Ab);
+        auto ReturnVal = Outer->Set(Context, 0, Ab);
     }
 }
 
@@ -407,7 +443,7 @@ V8_EXPORT void *GetObjectFromValue(v8::Isolate* Isolate, v8::Value *Value, int I
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetObjectFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -423,7 +459,7 @@ V8_EXPORT int GetTypeIdFromValue(v8::Isolate* Isolate, v8::Value *Value, int IsO
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetTypeIdFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -457,7 +493,7 @@ V8_EXPORT void SetObjectToOutValue(v8::Isolate* Isolate, v8::Value *Value, int C
         auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
         auto Object = JsEngine->FindOrAddObject(Isolate, Context, ClassID, Ptr);
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), Object);
+        auto ReturnVal = Outer->Set(Context, 0, Object);
     }
 }
 
@@ -467,7 +503,7 @@ V8_EXPORT void SetNullToOutValue(v8::Isolate* Isolate, v8::Value *Value)
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto ReturnVal = Outer->Set(Context, FV8Utils::V8String(Isolate, "value"), v8::Null(Isolate));
+        auto ReturnVal = Outer->Set(Context, 0, v8::Null(Isolate));
     }
 }
 
@@ -477,7 +513,7 @@ V8_EXPORT JSFunction *GetFunctionFromValue(v8::Isolate* Isolate, v8::Value *Valu
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetFunctionFromValue(Isolate, *Realvalue, false);
     }
     else
@@ -495,7 +531,7 @@ V8_EXPORT puerts::JSObject *GetJSObjectFromValue(v8::Isolate* Isolate, v8::Value
     {
         auto Context = Isolate->GetCurrentContext();
         auto Outer = Value->ToObject(Context).ToLocalChecked();
-        auto Realvalue = Outer->Get(Context, FV8Utils::V8String(Isolate, "value")).ToLocalChecked();
+        auto Realvalue = Outer->Get(Context, 0).ToLocalChecked();
         return GetJSObjectFromValue(Isolate, *Realvalue, false);
     }
     else

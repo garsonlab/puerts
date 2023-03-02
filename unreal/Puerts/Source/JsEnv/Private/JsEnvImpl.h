@@ -13,15 +13,13 @@
 #include "StructWrapper.h"
 #include "CppObjectMapper.h"
 #include "V8Utils.h"
-#if !defined(ENGINE_INDEPENDENT_JSENV)
-#include "Engine/Engine.h"
-#endif
 #include "ObjectMapper.h"
 #include "JSLogger.h"
 #include "TickerDelegateWrapper.h"
 #if !defined(ENGINE_INDEPENDENT_JSENV)
 #include "TypeScriptGeneratedClass.h"
 #endif
+#include "UECompatible.h"
 #include "ContainerMeta.h"
 #include "ObjectCacheNode.h"
 #include <unordered_map>
@@ -128,7 +126,9 @@ public:
     virtual void OnSourceLoaded(std::function<void(const FString&)> Callback) override;
 
 public:
-    virtual void Bind(UClass* Class, UObject* UEObject, v8::Local<v8::Object> JSObject) override;
+    bool IsNativeTakeJsRef(UClass* Class);
+
+    virtual void Bind(FClassWrapper* ClassWrapper, UObject* UEObject, v8::Local<v8::Object> JSObject) override;
 
     virtual void UnBind(UClass* Class, UObject* UEObject) override;
 
@@ -271,7 +271,13 @@ private:
 
     std::shared_ptr<FStructWrapper> GetStructWrapper(UStruct* InStruct, bool& IsReuseTemplate);
 
-    v8::Local<v8::FunctionTemplate> GetTemplateOfClass(UStruct* Class, bool& Existed);
+    struct FTemplateInfo
+    {
+        v8::UniquePersistent<v8::FunctionTemplate> Template;
+        std::shared_ptr<FStructWrapper> StructWrapper;
+    };
+
+    FTemplateInfo* GetTemplateInfoOfType(UStruct* Class, bool& Existed);
 
     v8::Local<v8::Function> GetJsClass(UStruct* Class, v8::Local<v8::Context> Context);
 
@@ -284,7 +290,7 @@ private:
     void ReportExecutionException(
         v8::Isolate* Isolate, v8::TryCatch* TryCatch, std::function<void(const JSError*)> CompletionHandler);
 
-    void RemoveFTickerDelegateHandle(FDelegateHandle* Handle);
+    void RemoveFTickerDelegateHandle(FUETickDelegateHandle* Handle);
 
     void SetInterval(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
@@ -356,7 +362,7 @@ private:
             if (auto Class = Cast<UClass>(Struct))
             {
                 UObject* Object = reinterpret_cast<UObject*>(Ptr);
-                if (!Object->IsValidLowLevel() || Object->IsPendingKill() || Object->GetClass() != Class ||
+                if (!Object->IsValidLowLevel() || UEObjectIsPendingKill(Object) || Object->GetClass() != Class ||
                     FV8Utils::GetPointer(JsObject))
                 {
                     return;
@@ -500,12 +506,11 @@ private:
 
     v8::Global<v8::Function> ReloadJs;
 
-    TMap<UStruct*, v8::UniquePersistent<v8::FunctionTemplate>> ClassToTemplateMap;
+    TMap<UStruct*, FTemplateInfo> TypeToTemplateInfoMap;
 
     TMap<FString, std::shared_ptr<FStructWrapper>> TypeReflectionMap;
 
     TMap<UObject*, v8::UniquePersistent<v8::Value>> ObjectMap;
-    TMap<const class UObjectBase*, v8::UniquePersistent<v8::Value>> GeneratedObjectMap;
 
     TMap<void*, FObjectCacheNode> StructCache;
 
@@ -636,9 +641,9 @@ private:
 
     bool ExtensionMethodsMapInited = false;
 
-    std::map<FDelegateHandle*, FTickerDelegateWrapper*> TickerDelegateHandleMap;
+    std::map<FUETickDelegateHandle*, FTickerDelegateWrapper*> TickerDelegateHandleMap;
 
-    FDelegateHandle DelegateProxiesCheckerHandler;
+    FUETickDelegateHandle DelegateProxiesCheckerHandler;
 
     V8Inspector* Inspector;
 
