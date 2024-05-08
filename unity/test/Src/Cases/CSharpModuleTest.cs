@@ -49,6 +49,13 @@ namespace Puerts.UnitTest
             var jsEnv = UnitTestEnv.GetEnv();
             jsEnv.ExecuteModule("CSharpModuleTest/console_log_test.mjs");
         }
+        
+        [Test]
+        public void EmptyModule()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.ExecuteModule("CSharpModuleTest/empty.mjs");
+        }
 
         public class Inner {
             [UnityEngine.Scripting.Preserve]
@@ -62,13 +69,14 @@ namespace Puerts.UnitTest
             jsEnv.ExecuteModule("CSharpModuleTest/access_innerclass_test.mjs");
         }
 
+#if !UNITY_WEBGL
         [Test]
         public void ArrayExtension()
         {
             var jsEnv = UnitTestEnv.GetEnv();
             jsEnv.ExecuteModule("CSharpModuleTest/array_extension_test.mjs");
         }
-
+#endif
 //         [Test]
 //         public void ParentOverloadTest()
 //         {

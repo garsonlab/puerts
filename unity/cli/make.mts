@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "fs";
-import { cd, cp, exec, mkdir, mv } from "@puerts/shell-util"
-import { join, normalize } from "path";
+import { cd, cp, exec, mkdir, mv, rm } from "@puerts/shell-util"
+import { basename, join, normalize } from "path";
 import assert from "assert";
 import downloadBackend from "./backend.mjs";
 import { createRequire } from "module";
@@ -10,7 +10,7 @@ const glob = createRequire(fileURLToPath(import.meta.url))('glob');
 
 interface BuildOptions {
     config: 'Debug' | 'Release' | "RelWithDebInfo",
-    platform: 'osx' | 'win' | 'ios' | 'android' | 'linux',
+    platform: 'osx' | 'win' | 'ios' | 'android' | 'linux' | 'ohos',
     arch: 'x64' | 'ia32' | 'armv7' | 'arm64' | 'auto',
     backend: string
 }
@@ -29,9 +29,9 @@ const platformCompileConfig = {
                 assert.equal(0, exec(`cmake ${cmakeDArgs} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -DANDROID_ABI=${ABI} -H. -B${CMAKE_BUILD_PATH} -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake -DANDROID_NATIVE_API_LEVEL=${API} -DANDROID_TOOLCHAIN=clang -DANDROID_TOOLCHAIN_NAME=${TOOLCHAIN_NAME}`).code)
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
 
-                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`)) 
+                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`))
                     return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`]
-                else 
+                else
                     return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.so`, `${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.stripped.so~`]
             }
         },
@@ -46,9 +46,9 @@ const platformCompileConfig = {
                 assert.equal(0, exec(`cmake ${cmakeDArgs} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -DANDROID_ABI=${ABI} -H. -B${CMAKE_BUILD_PATH} -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake -DANDROID_NATIVE_API_LEVEL=${API} -DANDROID_TOOLCHAIN=clang -DANDROID_TOOLCHAIN_NAME=${TOOLCHAIN_NAME}`).code)
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
 
-                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`)) 
+                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`))
                     return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`]
-                else 
+                else
                     return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.so`, `${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.stripped.so~`]
             }
         },
@@ -63,10 +63,46 @@ const platformCompileConfig = {
                 assert.equal(0, exec(`cmake ${cmakeDArgs} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -DANDROID_ABI=${ABI} -H. -B${CMAKE_BUILD_PATH} -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake -DANDROID_NATIVE_API_LEVEL=${API} -DANDROID_TOOLCHAIN=clang -DANDROID_TOOLCHAIN_NAME=${TOOLCHAIN_NAME}`).code)
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
 
-                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`)) 
+                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`))
                     return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`]
-                else 
+                else
                     return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.so`, `${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.stripped.so~`]
+            }
+        }
+    },
+    'ohos': {
+        'armv7': {
+            outputPluginPath: 'OHOS/libs/armeabi-v7a/',
+            hook: function (CMAKE_BUILD_PATH: string, options: BuildOptions, cmakeAddedLibraryName: string, cmakeDArgs: string) {
+                const NDK = process.env.OHOS_NDK || process.env.OHOS_NDK_HOME;
+                if (!NDK) throw new Error("pleace set OHOS_NDK environment variable first!")
+                const ABI = 'armeabi-v7a';
+                const cmake_bin_path = `${NDK}/build-tools/cmake/bin/cmake`
+
+                assert.equal(0, exec(`${cmake_bin_path} ${cmakeDArgs} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -DOHOS_ARCH=${ABI} -H. -B${CMAKE_BUILD_PATH}  -DOHOS_PLATFORM=OHOS -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/ohos.toolchain.cmake`).code)
+                assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
+
+                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`))
+                    return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`]
+                else
+                    return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.so`]
+            }
+        },
+        'arm64': {
+            outputPluginPath: 'OHOS/libs/arm64-v8a/',
+            hook: function (CMAKE_BUILD_PATH: string, options: BuildOptions, cmakeAddedLibraryName: string, cmakeDArgs: string) {
+                const NDK = process.env.OHOS_NDK || process.env.OHOS_NDK_HOME;
+                if (!NDK) throw new Error("pleace set OHOS_NDK environment variable first!")
+                const ABI = 'arm64-v8a';
+                const cmake_bin_path = `${NDK}/build-tools/cmake/bin/cmake`
+
+                assert.equal(0, exec(`${cmake_bin_path} ${cmakeDArgs} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -DOHOS_ARCH=${ABI} -H. -B${CMAKE_BUILD_PATH}  -DOHOS_PLATFORM=OHOS -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/ohos.toolchain.cmake`).code)
+                assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
+
+                if (existsSync(`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`))
+                    return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.a`]
+                else
+                    return [`${CMAKE_BUILD_PATH}/lib${cmakeAddedLibraryName}.so`]
             }
         }
     },
@@ -91,6 +127,7 @@ const platformCompileConfig = {
                 assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -GXcode ..`).code)
                 cd("..")
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
+                assert.equal(0, exec(`codesign --sign - --options linker-signed --force ${CMAKE_BUILD_PATH}/${options.config}/lib${cmakeAddedLibraryName}.dylib`).code)
 
                 mv(`${CMAKE_BUILD_PATH}/${options.config}/lib${cmakeAddedLibraryName}.dylib`, `${CMAKE_BUILD_PATH}/${options.config}/${cmakeAddedLibraryName}.bundle`)
                 return `${CMAKE_BUILD_PATH}/${options.config}/${cmakeAddedLibraryName}.bundle`
@@ -103,6 +140,7 @@ const platformCompileConfig = {
                 assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DFOR_SILICON=ON -GXcode ..`).code)
                 cd("..")
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
+                assert.equal(0, exec(`codesign --sign - --options linker-signed --force ${CMAKE_BUILD_PATH}/${options.config}/lib${cmakeAddedLibraryName}.dylib`).code)
 
                 return `${CMAKE_BUILD_PATH}/${options.config}/lib${cmakeAddedLibraryName}.dylib`
             }
@@ -137,7 +175,7 @@ const platformCompileConfig = {
             outputPluginPath: 'x86_64',
             hook: function (CMAKE_BUILD_PATH: string, options: BuildOptions, cmakeAddedLibraryName: string, cmakeDArgs: string) {
                 cd(CMAKE_BUILD_PATH);
-                assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} ..`).code)
+                assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_BUILD_TYPE=${options.config} ..`).code)
                 cd("..")
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code)
 
@@ -162,6 +200,9 @@ async function runPuertsMake(cwd: string, options: BuildOptions) {
         console.error("[Puer] CMake is not installed");
         process.exit();
     }
+    if (options.backend == "v8_9.4") {
+        options.backend = "v8_9.4.146.24"
+    }
     if (!existsSync(`${cwd}/.backends/${options.backend}`)) {
         await downloadBackend(cwd, options.backend);
     }
@@ -171,9 +212,7 @@ async function runPuertsMake(cwd: string, options: BuildOptions) {
 
     const BuildConfig = (platformCompileConfig as any)[options.platform][options.arch];
     const CMAKE_BUILD_PATH = cwd + `/build_${options.platform}_${options.arch}_${options.backend}${options.config != "Release" ? "_debug" : ""}`
-    const OUTPUT_PATH = cmakeAddedLibraryName == "puerts_il2cpp" ?
-        cwd + '/../Assets/core/upm/Plugins/' + BuildConfig.outputPluginPath :
-        cwd + '/../Assets/core/upm/Plugins/' + BuildConfig.outputPluginPath;
+    const OUTPUT_PATH = cwd + '/../Assets/core/upm/Plugins/' + BuildConfig.outputPluginPath;
     const BackendConfig = JSON.parse(readFileSync(cwd + `/cmake/backends.json`, 'utf-8'))[options.backend]?.config;
 
     if (BackendConfig?.skip?.[options.platform]?.[options.arch]) {
@@ -181,6 +220,10 @@ async function runPuertsMake(cwd: string, options: BuildOptions) {
         console.log(`not supported yet: ${options.backend} in ${options.platform} ${options.arch}`);
         console.log("=== Puer ===");
         return;
+    }
+    if (options.config == 'Debug') {
+        BackendConfig.definition = BackendConfig.definition || [];
+        BackendConfig.definition.push("WITH_INSPECTOR");
     }
     const definitionD = (BackendConfig.definition || []).join(';')
     const linkD = (BackendConfig['link-libraries'][options.platform]?.[options.arch] || []).join(';')
@@ -198,7 +241,7 @@ async function runPuertsMake(cwd: string, options: BuildOptions) {
     );
     if (!(outputFile instanceof Array)) outputFile = [outputFile];
     const copyConfig = (BackendConfig['copy-libraries'][options.platform]?.[options.arch] || [])
-        .map((pathToBackend: string) => join(cwd, '.backends', options.backend, pathToBackend))
+        .map((pathToBackend: string) => join(cwd, '../native_src/.backends', options.backend, pathToBackend))
         .concat(outputFile);
 
     copyConfig?.forEach((filepath: string) => {
@@ -215,5 +258,17 @@ async function runPuertsMake(cwd: string, options: BuildOptions) {
     return copyConfig;
 }
 
+async function makeOSXUniveralBinary(cwd: string, copyConfig: string[][]): Promise<void> {
+    const OUTPUT_PATH = cwd + '/../Assets/core/upm/Plugins/macOS';
+    const cmakeAddedLibraryName = readFileSync(`${cwd}/CMakeLists.txt`, 'utf-8').match(/add_library\((\w*)/)[1];
+
+    const arm64binary = cwd + '/../Assets/core/upm/Plugins/' + platformCompileConfig.osx.arm64.outputPluginPath + `/lib${cmakeAddedLibraryName}.dylib`;
+    const x64binary = cwd + '/../Assets/core/upm/Plugins/' + platformCompileConfig.osx.x64.outputPluginPath + `/${cmakeAddedLibraryName}.bundle`;
+    assert.equal(0, exec(`lipo -create -output ${join(OUTPUT_PATH, cmakeAddedLibraryName + '.bundle')} ${arm64binary} ${x64binary}`).code)
+
+    rm('-rf', arm64binary);
+    rm('-rf', x64binary);
+}
+
 export default runPuertsMake;
-export { platformCompileConfig }
+export { platformCompileConfig, makeOSXUniveralBinary }

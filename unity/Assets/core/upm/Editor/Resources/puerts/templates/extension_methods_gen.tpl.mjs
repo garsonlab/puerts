@@ -1,3 +1,9 @@
+/*
+* Tencent is pleased to support the open source community by making Puerts available.
+* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms. 
+* This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
+*/
 import { FOR } from './tte.mjs'
 
 export default function TypingTemplate(rawInfo) {
@@ -42,8 +48,8 @@ function getExtendedTypeToExtensionTypeInfo(rawInfo) {
     let info = new Map()
     for (var i = 0; i < rawInfo.Count; i++) {
         let pair = rawInfo.get_Item(i)
-        let extendedType = pair.Key.GetFriendlyName();
-        info.set(extendedType, toJsArray(pair.Value).map(x => x.GetFriendlyName()))
+        let extendedType = CS.Puerts.TypeExtensions.GetFriendlyName(pair.Key);
+        info.set(extendedType, toJsArray(pair.Value).map(x => CS.Puerts.TypeExtensions.GetFriendlyName(x)))
     }
     return Array.from(info).map(([extendedType, extensionTypes]) => ({extendedType, extensionTypes}))
 }

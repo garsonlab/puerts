@@ -1,6 +1,0 @@
-﻿#ifndef PUERTS_SHARED
-    #define PUERTS_SHARED
-#endif
-#ifndef EXPERIMENTAL_IL2CPP_PUERTS
-    #define EXPERIMENTAL_IL2CPP_PUERTS
-#endif

@@ -28,6 +28,24 @@ namespace Puerts
 #if ENABLE_IL2CPP
     [UnityEngine.Scripting.Preserve]
 #endif
+    public interface IResolvableLoader
+    {
+        string Resolve(string specifier, string referrer);
+    }
+
+#if ENABLE_IL2CPP
+    [UnityEngine.Scripting.Preserve]
+#endif
+    public interface IBuiltinLoadedListener
+    {
+        void OnBuiltinLoaded(JsEnv env);
+    }
+
+
+
+#if ENABLE_IL2CPP
+    [UnityEngine.Scripting.Preserve]
+#endif
     public class DefaultLoader : ILoader, IModuleChecker
     {
         private string root = "";
@@ -49,6 +67,12 @@ namespace Puerts
 
         private string PathToUse(string filepath)
         {
+#if !PUERTS_GENERAL
+            if (filepath.EndsWith(".js"))
+            {
+                UnityEngine.Debug.LogWarning("It is not recommended to use '*.js' in using Puer's DefaultLoader because '.js' is a reserved extension in older Unity3D. Use '.mjs' or '.cjs' instead");
+            }
+#endif
             return 
             // .cjs asset is only supported in unity2018+
 #if UNITY_2018_1_OR_NEWER
@@ -63,6 +87,9 @@ namespace Puerts
 #endif
         public bool FileExists(string filepath)
         {
+#if UNITY_WEBGL && !UNTIY_EDITOR
+            return true;
+#endif
 #if PUERTS_GENERAL
             return File.Exists(Path.Combine(root, filepath));
 #else 

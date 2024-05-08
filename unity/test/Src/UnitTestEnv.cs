@@ -6,13 +6,15 @@
 */
 
 using Puerts;
+using Puerts.ThirdParty;
 
 namespace Puerts.UnitTest 
 {
     public class UnitTestEnv
     {
         private static JsEnv env;
-        private static UnitTestLoader loader;
+        // private static UnitTestLoader loader;
+        private static UnitTestLoader2 loader2;
 
         UnitTestEnv() { }
 
@@ -20,8 +22,14 @@ namespace Puerts.UnitTest
         {
             if (env == null) 
             {
-                loader = new UnitTestLoader();
-                env = new JsEnv(loader);
+                // loader = new UnitTestLoader();
+                loader2 = new UnitTestLoader2();
+#if !UNITY_WEBGL || UNITY_EDITOR
+                env = new JsEnv(loader2);
+                CommonJS.InjectSupportForCJS(env);
+#else 
+                env = Puerts.WebGL.MainEnv.Get(loader2);
+#endif
             }
         }
 
@@ -31,10 +39,10 @@ namespace Puerts.UnitTest
             return env;
         }
 
-        public static UnitTestLoader GetLoader() 
+        public static UnitTestLoader2 GetLoader() 
         {
             if (env == null) Init();
-            return loader;
+            return loader2;
         }
     }
 }

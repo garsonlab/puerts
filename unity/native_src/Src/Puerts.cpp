@@ -7,8 +7,9 @@
 #include "JSEngine.h"
 #include <cstring>
 #include "V8Utils.h"
+#include "Log.h"
 
-#define API_LEVEL 19
+#define API_LEVEL 34
 
 using puerts::JSEngine;
 using puerts::FValue;
@@ -17,6 +18,10 @@ using puerts::JSFunction;
 using puerts::FV8Utils;
 using puerts::FLifeCycleInfo;
 using puerts::JsValueType;
+
+LogCallback GLogCallback = nullptr;
+LogCallback GLogWarningCallback = nullptr;
+LogCallback GLogErrorCallback = nullptr;
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,7 +37,7 @@ V8_EXPORT int GetApiLevel()
     return API_LEVEL;
 }
 
-V8_EXPORT int GetLibBackend()
+V8_EXPORT int GetLibBackend(v8::Isolate *Isolate)
 {
 #if WITH_NODEJS
     return puerts::JSEngineBackend::Node;
@@ -43,13 +48,13 @@ V8_EXPORT int GetLibBackend()
 #endif
 }
 
-V8_EXPORT v8::Isolate *CreateJSEngine()
+V8_EXPORT v8::Isolate *CreateJSEngine(int backend)
 {
     auto JsEngine = new JSEngine(nullptr, nullptr);
     return JsEngine->MainIsolate;
 }
 
-V8_EXPORT v8::Isolate *CreateJSEngineWithExternalEnv(void* external_quickjs_runtime, void* external_quickjs_context)
+V8_EXPORT v8::Isolate *CreateJSEngineWithExternalEnv(int backend, void* external_quickjs_runtime, void* external_quickjs_context)
 {
 #if WITH_QUICKJS
     auto JsEngine = new JSEngine(external_quickjs_runtime, external_quickjs_context);
@@ -65,30 +70,17 @@ V8_EXPORT void DestroyJSEngine(v8::Isolate *Isolate)
     delete JsEngine;
 }
 
-V8_EXPORT void SetGlobalFunction(v8::Isolate *Isolate, const char *Name, CSharpFunctionCallback Callback, int64_t Data)
+V8_EXPORT void SetGlobalFunction(v8::Isolate *Isolate, const char *Name, puerts::CSharpFunctionCallback Callback, int64_t Data)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     JsEngine->SetGlobalFunction(Name, Callback, Data);
 }
 
-V8_EXPORT void SetModuleResolver(v8::Isolate *Isolate, CSharpModuleResolveCallback Resolver, int32_t Idx)
+V8_EXPORT void SetModuleResolver(v8::Isolate *Isolate, puerts::CSharpModuleResolveCallback Resolver, int32_t Idx)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
-    JsEngine->ModuleResolver = Resolver;
+    // JsEngine->ModuleResolver = Resolver;
     JsEngine->Idx = Idx;
-}
-
-V8_EXPORT FResultInfo * ExecuteModule(v8::Isolate *Isolate, const char* Path, const char* Exportee)
-{
-    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
-    if (JsEngine->ExecuteModule(Path, Exportee))
-    {
-        return &(JsEngine->ResultInfo);
-    }
-    else
-    {
-        return nullptr;
-    }
 }
 
 V8_EXPORT FResultInfo * Eval(v8::Isolate *Isolate, const char *Code, const char* Path)
@@ -107,58 +99,28 @@ V8_EXPORT FResultInfo * Eval(v8::Isolate *Isolate, const char *Code, const char*
 V8_EXPORT bool ClearModuleCache(v8::Isolate *Isolate, const char* Path)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
-    std::string key(Path);
-    if (key.size() == 0) 
-    {
-#if !WITH_QUICKJS
-        for (auto Iter = JsEngine->PathToModuleMap.begin(); Iter != JsEngine->PathToModuleMap.end(); ++Iter)
-        {
-            Iter->second.Reset();
-        }
-#else
-#endif
-        JsEngine->PathToModuleMap.clear();
-        return true;
-    } 
-    else 
-    {
-        auto finder = JsEngine->PathToModuleMap.find(key);
-        if (finder != JsEngine->PathToModuleMap.end()) 
-        {
-            JsEngine->PathToModuleMap.erase(key);
-#if !WITH_QUICKJS
-            finder->second.Reset();
-            return true;
-#else
-            v8::Isolate::Scope IsolateScope(Isolate);
-            v8::HandleScope HandleScope(Isolate);
-            JSContext* ctx = JsEngine->ResultInfo.Context.Get(Isolate)->context_;
-            return JS_ReleaseLoadedModule(ctx, Path);
-#endif
-        }
-    }
-    return false;
+    return JsEngine->ClearModuleCache(Path);
 }   
 
-V8_EXPORT int _RegisterClass(v8::Isolate *Isolate, int BaseTypeId, const char *FullName, CSharpConstructorCallback Constructor, CSharpDestructorCallback Destructor, int64_t Data)
+V8_EXPORT int _RegisterClass(v8::Isolate *Isolate, int BaseTypeId, const char *FullName, puerts::CSharpConstructorCallback Constructor, puerts::CSharpDestructorCallback Destructor, int64_t Data)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     return JsEngine->RegisterClass(FullName, BaseTypeId, Constructor, Destructor, Data, 0);
 }
 
-V8_EXPORT int RegisterStruct(v8::Isolate *Isolate, int BaseTypeId, const char *FullName, CSharpConstructorCallback Constructor, CSharpDestructorCallback Destructor, int64_t Data, int Size)
+V8_EXPORT int RegisterStruct(v8::Isolate *Isolate, int BaseTypeId, const char *FullName, puerts::CSharpConstructorCallback Constructor, puerts::CSharpDestructorCallback Destructor, int64_t Data, int Size)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     return JsEngine->RegisterClass(FullName, BaseTypeId, Constructor, Destructor, Data, Size);
 }
 
-V8_EXPORT int RegisterFunction(v8::Isolate *Isolate, int ClassID, const char *Name, int IsStatic, CSharpFunctionCallback Callback, int64_t Data)
+V8_EXPORT int RegisterFunction(v8::Isolate *Isolate, int ClassID, const char *Name, int IsStatic, puerts::CSharpFunctionCallback Callback, int64_t Data)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     return JsEngine->RegisterFunction(ClassID, Name, IsStatic, Callback, Data) ? 1 : 0;
 }
 
-V8_EXPORT int RegisterProperty(v8::Isolate *Isolate, int ClassID, const char *Name, int IsStatic, CSharpFunctionCallback Getter, int64_t GetterData, CSharpFunctionCallback Setter, int64_t SetterData, int DontDelete)
+V8_EXPORT int RegisterProperty(v8::Isolate *Isolate, int ClassID, const char *Name, int IsStatic, puerts::CSharpFunctionCallback Getter, int64_t GetterData, puerts::CSharpFunctionCallback Setter, int64_t SetterData, int DontDelete)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     return JsEngine->RegisterProperty(ClassID, Name, IsStatic, Getter, GetterData, Setter, SetterData, DontDelete) ? 1 : 0;
@@ -193,14 +155,26 @@ V8_EXPORT void RequestFullGarbageCollectionForTesting(v8::Isolate *Isolate)
 }
 
 
-V8_EXPORT void SetGeneralDestructor(v8::Isolate *Isolate, CSharpDestructorCallback GeneralDestructor)
+V8_EXPORT void SetGeneralDestructor(v8::Isolate *Isolate, puerts::CSharpDestructorCallback GeneralDestructor)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     JsEngine->GeneralDestructor = GeneralDestructor;
 }
 
+V8_EXPORT JSFunction* GetJSObjectValueGetter(v8::Isolate *Isolate)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    return JsEngine->JSObjectValueGetter;
+}
+
+V8_EXPORT JSFunction* GetModuleExecutor(v8::Isolate *Isolate)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    return JsEngine->GetModuleExecutor();
+}
+
 //-------------------------- begin js call cs --------------------------
-V8_EXPORT const v8::Value *GetArgumentValue(const v8::FunctionCallbackInfo<v8::Value>& Info, int Index)
+V8_EXPORT const v8::Value *GetArgumentValue(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, int Index)
 {
     return *Info[Index];
 }
@@ -250,7 +224,10 @@ V8_EXPORT double GetNumberFromValue(v8::Isolate* Isolate, v8::Value *Value, int 
     else
     {
         auto Context = Isolate->GetCurrentContext();
-        return Value->NumberValue(Context).ToChecked();
+        auto maybeNumber = Value->NumberValue(Context);
+        if (maybeNumber.IsNothing())
+            return 0;
+        return maybeNumber.ToChecked();
     }
 }
 
@@ -617,7 +594,7 @@ V8_EXPORT void ReturnFunction(v8::Isolate* Isolate, const v8::FunctionCallbackIn
    Info.GetReturnValue().Set(Function->GFunction.Get(Isolate));
 }
 
-V8_EXPORT void ReturnCSharpFunctionCallback(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, CSharpFunctionCallback Callback, int64_t Data)
+V8_EXPORT void ReturnCSharpFunctionCallback(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, puerts::CSharpFunctionCallback Callback, int64_t Data)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
 #ifdef THREAD_SAFE
@@ -999,6 +976,24 @@ V8_EXPORT void LogicTick(v8::Isolate *Isolate)
 {
     auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
     return JsEngine->LogicTick();
+}
+
+V8_EXPORT void SetLogCallback(LogCallback Log, LogCallback LogWarning, LogCallback LogError)
+{
+    GLogCallback = Log;
+    GLogWarningCallback = LogError;
+    GLogErrorCallback = LogWarning;
+}
+
+V8_EXPORT const char* GetJSStackTrace(v8::Isolate* Isolate, int* Length)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+    std::string str = JsEngine->GetJSStackTrace();
+    *Length = static_cast<int>(str.length());
+    if (JsEngine->StrBuffer.size() < *Length + 1)
+        JsEngine->StrBuffer.reserve(*Length + 1);
+    memcpy(JsEngine->StrBuffer.data(), str.c_str(), *Length);
+    return JsEngine->StrBuffer.data();
 }
 
 //-------------------------- end debug --------------------------

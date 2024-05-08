@@ -6,7 +6,101 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 you can get the english version change log at [Github Release](https://github.com/Tencent/puerts/releases)
 
-## [2.0.0-pre.0] - 2023-02-27
+## [2.0.4] - 2024-01-09
+1. fix: the error when invoking extension method with out/ref args.
+2. fix: the error when set a JSObject to `null`.
+3. fix: the error when getting the arg index when invoking extension method with default arguments value.
+4. fix: members of valuetype created by paramless ctor will be random value.
+
+## [2.0.3] - 2023-11-02
+1. important!: to follow the rules of Assetstore, move the generation menu from `PuerTS` to `Tools/PuerTS`
+2. feature: support dynamic import (`import()`) #1540
+3. fix: a bug in access control #1512
+4. fix: a bug about Interface in DTS generation #1541
+5. fix: a bug about functions returning Datetime in DTS generation #1565
+6. fix: a bug in invoking ctors with params in xil2cpp mode #1519
+7. fix: compating the latest Thread::GetThreadStaticDataForThread in xil2cpp mode #1503
+8. fix: some generation error in xil2cpp mode #1520
+9. fix: a memory issue after invoking paramless ctor of valuetype #1563
+
+## [2.0.2] - 2023-09-07
+1. fix: defaultParam's value is not as expected when StaticWrapper in generated @ctxdegithub
+2. fix: could not build puerts with v8_8.4. In Unity2020-, the xil2cpp mode binary with v8_9.4 of android armv7 may not work. #1469
+3. optimize: combine `libwee8.a` and `libpuerts.a` in android for xil2cpp mode @mingxxming
+4. optimize: use universal binary instead of two binary with different arch in OSX now. @mikejurka
+5. optimize: `JsEnv` now have a public `Isolate` field to get the pointer of `v8::Isolate` @mingxxming
+6. optimize: remove our `SnapshotBlob.h`. Use v8's builtin snapshot instead. #1477
+7. optimize: The build script can now run with low Node.js version @xiezheng-XD #1495
+8. optimize: support inspector by default in Linux @geequlim
+
+## [2.0.1] - 2023-08-16
+1. Fix: NestedType was not declared correctly in `link.xml` #1460
+2. Fix: `out` parameters with ValueType might cause crash in xil2cpp mode. #1460
+3. Fix: default value of parameters in extension method was not correct in xil2cpp mode #1456
+4. Fix: JSObject was not recycle correctly
+
+## [2.0.0] - 2023-07-31
+1. Fix: `debugpath` was not work and make VSCode debug not availabled
+2. Fix: `puer.$genericMethod` cannot get the genericMethod from super class in xil2cpp mode #1417 @danij91
+3. Fix: `GetFriendlyName is not a function` when generating extensionInfo #1437
+
+This is the first stable version of `2.0.0`. Shout out to everyone who attending the test.
+
+If you need any help in upgrading. See [upgrade guide](https://puerts.github.io/en/docs/puerts/unity/other/upgrade/)
+
+## [2.0.0-rc.1] - 2023-07-14
+1. Fix: BlitableCopy was broken issue #1427
+2. Fix: two wrapper generation issue #1433 #1432
+
+## [2.0.0-rc.0] - 2023-06-30
+1. Fix: struct's paramless default ctor was unable to use #1301
+2. Fix: op_xxxx method was unable to use after generated #1399
+3. Fix: `GetFriendlyName` was not defined after generated
+4. Fix: the Constructor of BlittableCopy Type didn't invoked
+5. Optimization: isESM check optimize #1391
+
+## [2.0.0-pre.5] - 2023-06-15
+1. Fix: Error occurs when generating classes with `op_explicit` #1363.
+2. Fix: Issue with `ClearModuleCache` causing a crash #1364.
+3. Fix: Error in generating when struct produces recursive definition through pointers in xil2cpp mode #1365.
+4. Fix: Crash when printing struct in xil2cpp mode #1376.
+5. Fix: Crash when assigning JSObject to numeric type C# Field/Property #1383.
+6. Fix: Issue with ineffective `Filter`.
+7. Optimization: Changed xil2cpp mode's c plugin code to be generated instead of being included in the package.
+8. Optimization: Added FAQHelper to optimize code generation and error prompts during build.
+9. Optimization: Improved error messages for reflection calls, compatible with trimmed interfaces.
+10. Optimization: Changed the separator for console.log elements from comma to space.
+11. Optimization: Improved Node.js event loop #1093 #1279.
+12. Optimization: Suppressed warnings from DefaultMode's StaticWrapper.
+13. Feature: Added `JSObject.Get<T>(string)` and refactored ExecuteModule to use this Get interface.
+13. Feature: Added Filter for xil2cpp valuetype declaration.
+
+## [2.0.0-pre.4] - 2023-05-29
+1. Fix: the Error message threw from JS to CS would have unexpected character.
+2. Fix: doc generating fix #1322 #1329
+3. Fix: if an error is thrown in constructor, some valuetype would become null unexpectly.
+4. optimize: performance in WebGL is optimized.
+5. Fix: dts with Enumerable would throw compile error #1322
+6. To distinguish the meaning between Unity Il2cpp backend, we named the new il2cpp binding mode(v2 mode) to xIl2cpp mode.
+7. Fix: in xIl2cpp mode, create Puerts.ArrayBuffer in csharp would make its memory unstable. #1340
+8. Fix: in xIl2cpp mode, it would crash when returning a valuetype in a method with returntype `System.Object`.
+9. Fix: in xIl2cpp mode, it would crash when transfering nullable valuetype. #1320
+10. Fix: in xIl2cpp mode, it would crash when setting a valuetype to ref/out arguments. #1343
+11. Register logic refactor: #1317. Now we have a new access control ability.
+
+## [2.0.0-pre.3] - 2023-04-19
+1. Fix: ios Node.js cannot start for PuerTS's openupm version #1302
+2. Fix: the dependencies of DontBinding methods are still generated in DTS generation #1295
+3. Fix: some properties only have setters will report errors in wrapper generation #1298
+4. Fix: several problems with static fields in il2cpp binding mode #1288
+5. Fix: il2cpp binding mode + Unity2021 will crash when using structs reflecting #1288
+6. Fix: still cannot find generic classes after link.xml generation #1288
+7. Feature: add C# Enumerable forof support on JS side #1234
+8. Feature: refactor old ExecuteModule implementation to be consistent with il2cpp binding mode. At the same time, import 'csharp' and import 'puerts' are no longer supported, and it is recommended to use global variables.
+9. Feature: add `IResolvableLoader` to implement node_modules loading and solve #1270.
+10. Feature: add `IBuiltinLoadedListener` to allow Loader to do some operations after the built-in script is executed, which is convenient for encapsulating third-party Loader.
+
+## [2.0.0-pre.1] - 2023-02-27
 1. Add a new language binding directly based on il2cpp and there will be huge performance benifit. see our docsite for more information.
 2. The package layout of unity code in this repository is changed to UPM layout.
 3. Move the [commonjs-support](https://github.com/puerts/puerts-commonjs) package into this package.
@@ -18,6 +112,19 @@ you can get the english version change log at [Github Release](https://github.co
 4. The accessor key of ref object change to `[0]` instead of `['value']`. (If all your code was using `puer.$ref` or `puer.$unref`, it will take no effect)
 5. As what we mentioned in changelog of 1.4: there will be no `require` by default in 2.0.
 
+## [1.4.1] - 2023-03-02
+
+> changelog since 1.4.0
+
+1. fix: the crashed after getting a StackOverflowException #1208
+2. fix: could not get any log in inspector with Node.js backend. #1201
+3. fix: if a error is thrown in ESM and the message contains line ends, the error message could be incorrect. #1188
+4. fix: did not filt a obsoleted property setter/getter. #1152
+5. fix：when passing a JS number to C# `object`. the number would be cut to a Int.
+6. feature: JsEnv.ClearModuleCache can clear ESM module cache now.
+7. feature: now you can use JSObject to store a JS function. #1143 #1144
+8. feature: add `EXPERIMENTAL_PUERTS_DISABLE_SLOWBINDING`. It will be useful in somewhere need to do access control. This feature is still experimental and will be changed in the future.
+9. optimize: do not lock the mutex when destroying a JSFunction or JSObject.
 
 ## [1.4.1-pre.2] - 2023-02-09
 1. fix: could not get any log in inspector with Node.js backend. #1201

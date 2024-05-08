@@ -23,9 +23,11 @@
 #include "v8.h"
 #pragma warning(pop)
 
+#include "NamespaceDef.h"
+
 #define PUERTS_REUSE_STRUCTWRAPPER_FUNCTIONTEMPLATE 1
 
-namespace puerts
+namespace PUERTS_NAMESPACE
 {
 class FStructWrapper
 {
@@ -49,7 +51,7 @@ public:
         }
     }
 
-    void AddExtensionMethods(std::vector<UFunction*> InExtensionMethods);
+    void AddExtensionMethods(const std::vector<UFunction*>& InExtensionMethods);
 
 #if PUERTS_REUSE_STRUCTWRAPPER_FUNCTIONTEMPLATE
     v8::UniquePersistent<v8::FunctionTemplate> CachedFunctionTemplate;
@@ -85,7 +87,13 @@ protected:
 
     TWeakObjectPtr<UStruct> Struct;
 
+#if PUERTS_KEEP_UOBJECT_REFERENCE
     bool IsNativeTakeJsRef = false;
+#else
+    bool IsNativeTakeJsRef = true;
+#endif
+
+    bool IsTypeScriptGeneratedClass = false;
 
     static void StaticClass(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
@@ -111,6 +119,11 @@ public:
 
     static void Free(TWeakObjectPtr<UStruct> InStruct, FinalizeFunc InExternalFinalize, void* Ptr);
 
+    void Free(void* Ptr)
+    {
+        Free(Struct, ExternalFinalize, Ptr);
+    }
+
     static void New(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
     void New(v8::Isolate* Isolate, v8::Local<v8::Context>& Context, const v8::FunctionCallbackInfo<v8::Value>& Info);
@@ -129,4 +142,4 @@ public:
 
     void New(v8::Isolate* Isolate, v8::Local<v8::Context>& Context, const v8::FunctionCallbackInfo<v8::Value>& Info);
 };
-}    // namespace puerts
+}    // namespace PUERTS_NAMESPACE

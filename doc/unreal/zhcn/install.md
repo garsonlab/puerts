@@ -6,11 +6,11 @@
 
 * 下载v8
 
-    - UE4.25及以上版本：[V8_8.4.371.19_0323](https://github.com/puerts/backend-v8/releases/tag/V8_8.4.371.19_0323)
+    - UE4.25及以上版本：[V8 8.4.371.19](https://github.com/puerts/backend-v8/releases/tag/V8_8.4.371.19_230822), [V8 9.4.146.24 (支持M1)](https://github.com/puerts/backend-v8/releases/tag/V8_9.4.146.24_230822)
     
     - UE4.24及以下版本：[V8 for ue 4.24 or below](https://github.com/puerts/backend-v8/releases/tag/v8_for_ue424_or_below)
     
-* 解压到`YouProject/Plugins/Puerts/ThirdParty`
+* 解压到`YouProject/Plugins/Puerts/ThirdParty`，如果下载的是9.4版本请手动重命名v8_9.4目录为v8
 
 ### 发布包安装方式
 
@@ -31,7 +31,7 @@ find . -name "*.dylib" | xargs sudo xattr -r -d com.apple.quarantine
 
 纯蓝图工程不会自动编译Plugins，而Puerts目前的源码或者发布包内，都是C++源码。
 
-可以clone puerts的demo，在vs编译工程后拷贝到纯蓝图工程。
+一个纯蓝图如何使用一个C++ Plugins是个UE通用问题，目前已知可行的方式是添加一个C++代码把这纯蓝图工程转为C++工程，另外一个比较有可能（但未验证的方式）是自行编译UE引擎，而且编译引擎时把puerts放进去一起编译。
 
 ### 虚拟机切换
 
@@ -41,10 +41,10 @@ puerts支持多种脚本后端：V8，quickjs，nodejs
 * 对于包大小苛刻的场景，可以选用quickjs
 * nodejs相比v8版本，可以使用更多的npm模块，但包体比v8还要大些
 
-quickjs后端[下载](https://github.com/puerts/backend-quickjs/releases/tag/QJS_230130)
+quickjs后端[下载](https://github.com/puerts/backend-quickjs/releases/tag/QJS_231011)
 
-nodejs后端[下载](https://github.com/puerts/backend-nodejs/releases/tag/NodeJS_0329)
+nodejs后端[下载](https://github.com/puerts/backend-nodejs/releases/tag/NodeJS_16.16.0_230216)
 
 解压到`YouProject/Plugins/Puerts/ThirdParty`
 
-修改[JsEnv.Build.cs](https://github.com/Tencent/puerts/blob/master/unreal/Puerts/Source/JsEnv/JsEnv.Build.cs)，UseQuickjs为true表示用quickjs后端，UseNodejs表示用nodejs后端。
+修改[JsEnv.Build.cs](https://github.com/Tencent/puerts/blob/master/unreal/Puerts/Source/JsEnv/JsEnv.Build.cs) ，UseQuickjs为true表示用quickjs后端，UseNodejs表示用nodejs后端。

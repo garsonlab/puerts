@@ -1,7 +1,6 @@
 ﻿#include <memory>
 
 #pragma warning(push, 0)  
-#include "libplatform/libplatform.h"
 #include "v8.h"
 #pragma warning(pop)
 
@@ -12,32 +11,7 @@
 #include "uv.h"
 #pragma warning(pop)
 
-#else // !WITH_NODEJS
-
-#if defined(PLATFORM_WINDOWS)
-
-#if _WIN64
-#include "Blob/Win64/SnapshotBlob.h"
-#else
-#include "Blob/Win32/SnapshotBlob.h"
-#endif
-
-#elif defined(PLATFORM_ANDROID_ARM)
-#include "Blob/Android/armv7a/SnapshotBlob.h"
-#elif defined(PLATFORM_ANDROID_ARM64)
-#include "Blob/Android/arm64/SnapshotBlob.h"
-#elif defined(PLATFORM_MAC_ARM64)
-#include "Blob/macOS_arm64/SnapshotBlob.h"
-#elif defined(PLATFORM_MAC)
-#include "Blob/macOS/SnapshotBlob.h"
-#elif defined(PLATFORM_IOS)
-#include "Blob/iOS/arm64/SnapshotBlob.h"
-#elif defined(PLATFORM_LINUX)
-#include "Blob/Linux/SnapshotBlob.h"
-#endif
-
 #endif // WITH_NODEJS
-
 
 #include "CppObjectMapper.h"
 #include "DataTransfer.h"
@@ -46,11 +20,11 @@
 #include "Binding.hpp"   
 #include <stdarg.h>
 #include "BackendEnv.h"
+#include "ExecuteModuleJSCode.h"
 
 #define USE_OUTSIZE_UNITY 1
 
 #include "UnityExports4Puerts.h"
-#include "PromiseRejectCallback.hpp"
 
 namespace puerts
 {
@@ -60,7 +34,6 @@ enum Backend
     Node        = 1,
     QuickJS     = 2,
 };
-static std::unique_ptr<v8::Platform> GPlatform;
 #if defined(WITH_NODEJS)
 static std::vector<std::string>* Args;
 static std::vector<std::string>* ExecArgs;
@@ -161,6 +134,14 @@ static void SetNativePtr(v8::Object* obj, void* ptr, void* type_id)
     DataTransfer::SetPointer(obj, type_id, 1);
 }
 
+static v8::Value* CreateJSArrayBuffer(v8::Context* context, void* Ptr, size_t Size)
+{
+    v8::Local<v8::ArrayBuffer> Ab = v8::ArrayBuffer::New(context->GetIsolate(), Size);
+    void* Buff = Ab->GetBackingStore()->Data();
+    ::memcpy(Buff, Ptr, Size);
+    return *Ab;
+}
+
 static void* _GetRuntimeObjectFromPersistentObject(v8::Local<v8::Context> Context, v8::Local<v8::Object> Obj)
 {
     auto Isolate = Context->GetIsolate();
@@ -218,6 +199,7 @@ static void* FunctionToDelegate(v8::Isolate* Isolate, v8::Local<v8::Context> Con
     //{
     //    PersistentObjectInfo* delegateInfo = static_cast<PersistentObjectInfo*>((v8::Local<v8::External>::Cast(MaybeDelegate.ToLocalChecked()))->Value());
     //}
+
     void* Ptr = _GetRuntimeObjectFromPersistentObject(Context, Func);
     if (Ptr == nullptr)
     {
@@ -275,6 +257,7 @@ static void SetPersistentObject(pesapi_env env, pesapi_value pvalue, PersistentO
     objectInfo->JsEnvLifeCycleTracker = DataTransfer::GetJsEnvLifeCycleTracker(Isolate);
 }
 
+
 static v8::Value* GetPersistentObject(v8::Context* env, const PersistentObjectInfo* objectInfo)
 {    
     if (objectInfo->JsEnvLifeCycleTracker.expired())
@@ -297,6 +280,43 @@ static v8::Value* GetPersistentObject(v8::Context* env, const PersistentObjectIn
 static void* JsValueToCSRef(v8::Local<v8::Context> context, v8::Local<v8::Value> val, const void *typeId)
 {
     return GUnityExports.JsValueToCSRef(typeId, *context, *val);
+}
+
+static v8::Value* GetModuleExecutor(v8::Context* env)
+{
+    v8::Local<v8::Context> Context;
+    memcpy(static_cast<void*>(&Context), &env, sizeof(env));
+
+    auto ret = pesapi_eval((pesapi_env) env, (const uint8_t*) ExecuteModuleJSCode, strlen(ExecuteModuleJSCode), "__puer_execute__.mjs");
+
+    auto Isolate = Context->GetIsolate();
+    v8::Local<v8::Object> Global = Context->Global();
+    auto Ret = Global->Get(Context, v8::String::NewFromUtf8(Isolate, EXECUTEMODULEGLOBANAME).ToLocalChecked());
+    v8::Local<v8::Value> Func;
+    if (Ret.ToLocal(&Func) && Func->IsFunction())
+    {
+        return *Func;
+    }
+
+    return nullptr;
+}
+
+static void* GetJSObjectValue(const PersistentObjectInfo* objectInfo, const char* key, const void* Typeid)
+{
+    auto Isolate = objectInfo->EnvInfo->Isolate;
+    v8::Isolate::Scope Isolatescope(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    auto LocalContext = objectInfo->EnvInfo->Context.Get(Isolate);
+    v8::Context::Scope ContextScope(LocalContext);
+
+    v8::Local<v8::Value> Key = v8::String::NewFromUtf8(Isolate, key).ToLocalChecked();
+
+    v8::Local<v8::Object> Obj = v8::Local<v8::Object>::Cast(objectInfo->JsObject.Get(Isolate));
+
+    auto maybeValue = Obj->Get(LocalContext, Key);
+    if (maybeValue.IsEmpty()) return nullptr;
+
+    return puerts::JsValueToCSRef(LocalContext, maybeValue.ToLocalChecked(), Typeid);
 }
 
 static bool IsDelegate(const void* typeId)
@@ -368,6 +388,15 @@ inline static v8::Local<v8::Value> CSAnyToJsValue(v8::Isolate* Isolate, v8::Loca
         return Ret;
     }
     
+    jsVal = GUnityExports.TryTranslateValueType(*Context, Obj);
+    
+    if (jsVal)
+    {
+        v8::Local<v8::Value> Ret;
+        memcpy(static_cast<void*>(&Ret), &jsVal, sizeof(jsVal));
+        return Ret;
+    }
+    
     return CSRefToJsValue(Isolate, Context, Obj);
 }
 
@@ -376,6 +405,11 @@ inline static v8::Local<v8::Value> CopyValueType(v8::Isolate* Isolate, v8::Local
     void* buff =  GUnityExports.ObjectAllocate(TypeId); //TODO: allc by jsenv
     memcpy(buff, Ptr, SizeOfValueType);
     return DataTransfer::FindOrAddCData(Isolate, Context, TypeId, buff, false);
+}
+inline static v8::Local<v8::Value> CopyNullableValueType(v8::Isolate* Isolate, v8::Local<v8::Context> Context, const void* TypeId, const void* Ptr, bool hasValue, size_t SizeOfValueType)
+{
+    if (!hasValue) return v8::Null(Isolate);
+    return CopyValueType(Isolate, Context, TypeId, Ptr, SizeOfValueType);
 }
 
 inline static const void* GetTypeId(v8::Local<v8::Object> Obj)
@@ -542,7 +576,7 @@ struct RestArguments
 template <typename T>
 struct OptionalParameter
 {
-    static T GetPrimitive(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, int index)
+    static T GetPrimitive(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, puerts::WrapData* wrapData, int index)
     {
         if (index < info.Length())
         {
@@ -550,6 +584,7 @@ struct OptionalParameter
         }
         else
         {
+            if (wrapData->IsExtensionMethod) ++index;
             auto pret = (T*)GetDefaultValuePtr(methodInfo, index);
             if (pret) 
             {
@@ -559,7 +594,7 @@ struct OptionalParameter
         }
     }
     
-    static T GetValueType(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, int index)
+    static T GetValueType(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, puerts::WrapData* wrapData, int index)
     {
         if (index < info.Length())
         {
@@ -567,6 +602,7 @@ struct OptionalParameter
         }
         else
         {
+            if (wrapData->IsExtensionMethod) ++index;
             auto pret = (T*)GetDefaultValuePtr(methodInfo, index);
             if (pret) 
             {
@@ -578,7 +614,7 @@ struct OptionalParameter
         }
     }
     
-    static void* GetString(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, int index)
+    static void* GetString(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, puerts::WrapData* wrapData, int index)
     {
         if (index < info.Length())
         {
@@ -587,11 +623,12 @@ struct OptionalParameter
         }
         else
         {
+            if (wrapData->IsExtensionMethod) ++index;
             return GetDefaultValuePtr(methodInfo, index);
         }
     }
     
-    static void* GetRefType(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, int index, const void* typeId)
+    static void* GetRefType(v8::Local<v8::Context> context, const v8::FunctionCallbackInfo<v8::Value>& info, const void* methodInfo, puerts::WrapData* wrapData, int index, const void* typeId)
     {
         if (index < info.Length())
         {
@@ -599,6 +636,7 @@ struct OptionalParameter
         }
         else
         {
+            if (wrapData->IsExtensionMethod) ++index;
             return GetDefaultValuePtr(methodInfo, index);
         }
     }
@@ -662,30 +700,7 @@ struct JSEnv
 {
     JSEnv()
     {
-        if (!GPlatform)
-        {
-#if defined(WITH_NODEJS)
-            int Argc = 2;
-            char* ArgvIn[] = {"puerts", "--no-harmony-top-level-await"};
-            char ** Argv = uv_setup_args(Argc, ArgvIn);
-            Args = new std::vector<std::string>(Argv, Argv + Argc);
-            ExecArgs = new std::vector<std::string>();
-            Errors = new std::vector<std::string>();
-
-            GPlatform = node::MultiIsolatePlatform::Create(4);
-            v8::V8::InitializePlatform(GPlatform.get());
-            v8::V8::Initialize();
-            int ExitCode = node::InitializeNodeWithArgs(Args, ExecArgs, Errors);
-            for (const std::string& error : *Errors)
-            {
-                printf("InitializeNodeWithArgs failed\n");
-            }
-#else
-            GPlatform = v8::platform::NewDefaultPlatform();
-            v8::V8::InitializePlatform(GPlatform.get());
-            v8::V8::Initialize();
-#endif
-        }
+        puerts::FBackendEnv::GlobalPrepare();
         
 #if defined(WITH_NODEJS)
         std::string Flags = "--stack_size=856";
@@ -698,70 +713,22 @@ struct JSEnv
 #endif
         v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
         
-#if defined(WITH_NODEJS)
-        NodeUVLoop = new uv_loop_t;
-        const int Ret = uv_loop_init(NodeUVLoop);
-        if (Ret != 0)
-        {
-            // TODO log
-            printf("uv_loop_init failed\n");
-            return;
-        }
+        BackendEnv.Initialize(nullptr, nullptr);
+        MainIsolate = BackendEnv.MainIsolate;
 
-        NodeArrayBufferAllocator = node::ArrayBufferAllocator::Create();
-        // PLog(puerts::Log, "[PuertsDLL][JSEngineWithNode]isolate");
-
-        auto Platform = static_cast<node::MultiIsolatePlatform*>(GPlatform.get());
-        MainIsolate = node::NewIsolate(NodeArrayBufferAllocator.get(), NodeUVLoop,
-            Platform);
-
-        MainIsolate->SetMicrotasksPolicy(v8::MicrotasksPolicy::kAuto);
-#else
-        v8::StartupData SnapshotBlob;
-        SnapshotBlob.data = (const char *)SnapshotBlobCode;
-        SnapshotBlob.raw_size = sizeof(SnapshotBlobCode);
-        v8::V8::SetSnapshotDataBlob(&SnapshotBlob);
-
-        // 初始化Isolate和DefaultContext
-        CreateParams = new v8::Isolate::CreateParams();
-        CreateParams->array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-        
-        MainIsolate = v8::Isolate::New(*CreateParams);
-#endif
         auto Isolate = MainIsolate;
         
         v8::Isolate::Scope Isolatescope(Isolate);
         v8::HandleScope HandleScope(Isolate);
 
-        v8::Local<v8::Context> Context = v8::Context::New(Isolate);
+        v8::Local<v8::Context> Context = BackendEnv.MainContext.Get(Isolate);;
         v8::Context::Scope ContextScope(Context);
         
         MainContext.Reset(Isolate, Context);
-#if defined(WITH_NODEJS)
-        v8::Local<v8::Object> Global = Context->Global();
-        auto strConsole = v8::String::NewFromUtf8(Isolate, "console").ToLocalChecked();
-        v8::Local<v8::Value> Console = Global->Get(Context, strConsole).ToLocalChecked();
 
-        NodeIsolateData = node::CreateIsolateData(Isolate, NodeUVLoop, Platform, NodeArrayBufferAllocator.get()); // node::FreeIsolateData
-    
-        NodeEnv = CreateEnvironment(NodeIsolateData, Context, *Args, *ExecArgs, node::EnvironmentFlags::kOwnsProcessState);
-
-        Global->Set(Context, strConsole, Console).Check();
-
-        v8::MaybeLocal<v8::Value> LoadenvRet = node::LoadEnvironment(
-            NodeEnv,
-            "const publicRequire ="
-            "  require('module').createRequire(process.cwd() + '/');"
-            "globalThis.require = publicRequire;");
-
-        if (LoadenvRet.IsEmpty())  // There has been a JS exception.
-        {
-            return;
-        }
-#endif
         CppObjectMapper.Initialize(Isolate, Context);
         Isolate->SetData(MAPPER_ISOLATE_DATA_POS, static_cast<ICppObjectMapper*>(&CppObjectMapper));
-        Isolate->SetData(1, &BackendEnv);
+        Isolate->SetData(BACKENDENV_DATA_POS, &BackendEnv);
         
         Context->Global()->Set(Context, v8::String::NewFromUtf8(Isolate, "loadType").ToLocalChecked(), v8::FunctionTemplate::New(Isolate, [](const v8::FunctionCallbackInfo<v8::Value>& Info)
         {
@@ -798,68 +765,15 @@ struct JSEnv
                 GLogCallback(str.c_str());
             }
         })->GetFunction(Context).ToLocalChecked()).Check();
-
-        Context->Global()->Set(Context, v8::String::NewFromUtf8(Isolate, "__puer_execute_module_sync__").ToLocalChecked(), v8::FunctionTemplate::New(Isolate, [](const v8::FunctionCallbackInfo<v8::Value>& info)
-        {
-            v8::Isolate* Isolate = info.GetIsolate();
-            v8::Isolate::Scope IsolateScope(Isolate);
-            v8::HandleScope HandleScope(Isolate);
-            v8::Local<v8::Context> Context = Isolate->GetCurrentContext();
-            v8::Context::Scope ContextScope(Context);
-
-            v8::Local<v8::String> Specifier_v8 = info[0]->ToString(Context).ToLocalChecked();
-
-            auto emptyStrV8 = v8::String::NewFromUtf8(Isolate, "", v8::NewStringType::kNormal).ToLocalChecked();
-            v8::ScriptOrigin origin(emptyStrV8,
-                            v8::Integer::New(Isolate, 0),                      // line offset
-                            v8::Integer::New(Isolate, 0),                    // column offset
-                            v8::True(Isolate),                    // is cross origin
-                            v8::Local<v8::Integer>(),                 // script id
-                            v8::Local<v8::Value>(),                   // source map URL
-                            v8::False(Isolate),                   // is opaque (?)
-                            v8::False(Isolate),                   // is WASM
-                            v8::True(Isolate),                    // is ES Module
-                            v8::PrimitiveArray::New(Isolate, 10)
-            );
-            v8::ScriptCompiler::Source source(emptyStrV8, origin);
-            v8::Local<v8::Module> entryModule = v8::ScriptCompiler::CompileModule(Isolate, &source, v8::ScriptCompiler::kNoCompileOptions)
-                    .ToLocalChecked();
-
-            v8::MaybeLocal<v8::Module> mod = puerts::esmodule::ResolveModule(Context, Specifier_v8, entryModule);
-            if (mod.IsEmpty())
-            {
-                // TODO
-                return;
-            }
-            v8::Local<v8::Module> moduleChecked = mod.ToLocalChecked();
-            if (!puerts::esmodule::LinkModule(Context, moduleChecked))
-            {
-                // TODO
-                return;
-            }
-            v8::Maybe<bool> ret = moduleChecked->InstantiateModule(Context, puerts::esmodule::ResolveModule);
-            if (ret.IsNothing() || !ret.ToChecked())
-            {
-                // TODO
-                return;
-            }
-            v8::MaybeLocal<v8::Value> evalRet = moduleChecked->Evaluate(Context);
-            if (evalRet.IsEmpty())
-            {
-                // TODO
-                return;
-            }
-            info.GetReturnValue().Set(moduleChecked->GetModuleNamespace());
-
-        })->GetFunction(Context).ToLocalChecked()).Check();
-        MainIsolate->SetHostInitializeImportMetaObjectCallback(&puerts::esmodule::HostInitializeImportMetaObject);
-
-        MainIsolate->SetPromiseRejectCallback(&PromiseRejectCallback<puerts::BackendEnv>);
-        Context->Global()->Set(Context, v8::String::NewFromUtf8(MainIsolate, "__tgjsSetPromiseRejectCallback").ToLocalChecked(), v8::FunctionTemplate::New(Isolate, &SetPromiseRejectCallback<puerts::BackendEnv>)->GetFunction(Context).ToLocalChecked()).Check();
+        
+        BackendEnv.StartPolling();
     }
     
     ~JSEnv()
     {
+        BackendEnv.LogicTick();
+        BackendEnv.StopPolling();
+
         CppObjectMapper.UnInitialize(MainIsolate);
         BackendEnv.PathToModuleMap.clear();
         BackendEnv.ScriptIdToPathMap.clear();
@@ -870,52 +784,15 @@ struct JSEnv
             BackendEnv.Inspector = nullptr;
         }
 
-#if defined(WITH_NODEJS)
-        // node::EmitExit(NodeEnv);
-        node::Stop(NodeEnv);
-        node::FreeEnvironment(NodeEnv);
-        node::FreeIsolateData(NodeIsolateData);
-        auto Platform = static_cast<node::MultiIsolatePlatform*>(GPlatform.get());
-        bool platform_finished = false;
-        Platform->AddIsolateFinishedCallback(MainIsolate, [](void* data) {
-            *static_cast<bool*>(data) = true;
-        }, &platform_finished);
-        Platform->UnregisterIsolate(MainIsolate);
-#endif
         MainContext.Reset();
-        MainIsolate->Dispose();
-#if WITH_NODEJS
-        // Wait until the platform has cleaned up all relevant resources.
-        while (!platform_finished)
-        {
-            uv_run(NodeUVLoop, UV_RUN_ONCE);
-        }
-
-        int err = uv_loop_close(NodeUVLoop);
-        assert(err == 0);
-        delete NodeUVLoop;
-#else
-        delete CreateParams->array_buffer_allocator;
-        delete CreateParams;
-#endif
+        BackendEnv.UnInitialize();
     }
     
     v8::Isolate* MainIsolate;
     v8::Global<v8::Context> MainContext;
     
-    v8::Isolate::CreateParams* CreateParams;
-    
     puerts::FCppObjectMapper CppObjectMapper;
-    puerts::BackendEnv BackendEnv;
-
-#if defined(WITH_NODEJS)
-    uv_loop_t* NodeUVLoop;
-    std::unique_ptr<node::ArrayBufferAllocator> NodeArrayBufferAllocator;
-    node::IsolateData* NodeIsolateData;
-    node::Environment* NodeEnv;
-
-    const float UV_LOOP_DELAY = 0.1;
-#endif
+    puerts::FBackendEnv BackendEnv;
 };
 
 }
@@ -949,6 +826,11 @@ V8_EXPORT void DestroyNativeJSEnv(puerts::JSEnv* jsEnv)
 V8_EXPORT void SetLogCallback(puerts::LogCallback Log)
 {
     puerts::GLogCallback = Log;
+}
+
+V8_EXPORT v8::Isolate* GetIsolate(puerts::JSEnv* jsEnv)
+{
+    return jsEnv->MainIsolate;
 }
 
 V8_EXPORT pesapi_env_holder GetPesapiEnvHolder(puerts::JSEnv* jsEnv)
@@ -1008,14 +890,17 @@ static void SetParamArrayFlagAndOptionalNum(puerts::WrapData* data, const char* 
     }
 }
 
-V8_EXPORT puerts::WrapData* AddConstructor(puerts::JsClassInfo* classInfo, const char* signature, void* method, puerts::MethodPointer methodPointer, int typeInfoNum)
+V8_EXPORT puerts::WrapFuncPtr FindWrapFunc(const char* signature)
 {
-    //puerts::PLog("ctor %s -> %s", classInfo->Name.c_str(), signature);
-    puerts::WrapFuncPtr WrapFunc = puerts::FindWrapFunc(signature);
-    if (!WrapFunc)
-    {
-        WrapFunc = puerts::GUnityExports.ReflectionWrapper;
-    }
+    if (signature == nullptr)
+        return puerts::GUnityExports.ReflectionWrapper;
+    else 
+        return puerts::FindWrapFunc(signature);
+}
+
+V8_EXPORT puerts::WrapData* AddConstructor(puerts::JsClassInfo* classInfo, const char* signature, puerts::WrapFuncPtr WrapFunc, void* method, puerts::MethodPointer methodPointer, int typeInfoNum)
+{
+    // puerts::PLog(puerts::LogLevel::Log, "ctor %s -> %s", classInfo->Name.c_str(), signature);
     if (!WrapFunc) return nullptr;
     int allocSize = sizeof(puerts::WrapData) + sizeof(void*) * typeInfoNum;
     puerts::WrapData* data = (puerts::WrapData*)malloc(allocSize);
@@ -1031,13 +916,8 @@ V8_EXPORT puerts::WrapData* AddConstructor(puerts::JsClassInfo* classInfo, const
     return data;
 }
 
-V8_EXPORT puerts::WrapData* AddMethod(puerts::JsClassInfo* classInfo, const char* signature, const char* name, bool isStatic, bool isExtensionMethod, bool isGetter, bool isSetter, void* method, puerts::MethodPointer methodPointer, int typeInfoNum)
+V8_EXPORT puerts::WrapData* AddMethod(puerts::JsClassInfo* classInfo, const char* signature, puerts::WrapFuncPtr WrapFunc, const char* name, bool isStatic, bool isExtensionMethod, bool isGetter, bool isSetter, void* method, puerts::MethodPointer methodPointer, int typeInfoNum)
 {
-    puerts::WrapFuncPtr WrapFunc = puerts::FindWrapFunc(signature);
-    if (!WrapFunc)
-    {
-        WrapFunc = puerts::GUnityExports.ReflectionWrapper;
-    }
     if (!WrapFunc) return nullptr;
     int allocSize = sizeof(puerts::WrapData) + sizeof(void*) * typeInfoNum;
     puerts::WrapData* data = (puerts::WrapData*)malloc(allocSize);
@@ -1071,9 +951,27 @@ V8_EXPORT puerts::WrapData* AddMethod(puerts::JsClassInfo* classInfo, const char
     return data;
 }
 
-V8_EXPORT bool AddField(puerts::JsClassInfo* classInfo, const char* signature, const char* name, bool is_static, void* fieldInfo, int offset, void* fieldTypeInfo)
+static puerts::FieldWrapFuncInfo *ReflectionFuncWrap = nullptr;
+V8_EXPORT puerts::FieldWrapFuncInfo* FindFieldWrap(const char* signature)
 {
-    puerts::FieldWrapFuncInfo* wrapFuncInfo = puerts::FindFieldWrapFuncInfo(signature);
+    if (signature == nullptr)
+    {
+        if (ReflectionFuncWrap == nullptr)
+        {
+            ReflectionFuncWrap = new puerts::FieldWrapFuncInfo();
+            ReflectionFuncWrap->Getter = puerts::GUnityExports.ReflectionGetFieldWrapper;
+            ReflectionFuncWrap->Setter = puerts::GUnityExports.ReflectionSetFieldWrapper;
+        }
+        
+        return ReflectionFuncWrap;
+    }
+
+    else 
+        return puerts::FindFieldWrapFuncInfo(signature);
+}
+
+V8_EXPORT bool AddField(puerts::JsClassInfo* classInfo, puerts::FieldWrapFuncInfo* wrapFuncInfo, const char* name, bool is_static, void* fieldInfo, int offset, void* fieldTypeInfo)
+{
     puerts::FieldWrapFuncPtr Getter = nullptr;
     puerts::FieldWrapFuncPtr Setter = nullptr;
     if (wrapFuncInfo) 
@@ -1082,11 +980,6 @@ V8_EXPORT bool AddField(puerts::JsClassInfo* classInfo, const char* signature, c
         Setter = wrapFuncInfo->Setter;
     }
     else
-    {
-        Getter = puerts::GUnityExports.ReflectionGetFieldWrapper;
-        Setter = puerts::GUnityExports.ReflectionSetFieldWrapper;
-    }
-    if (!Getter && !Setter)
     {
         return false;
     }
@@ -1235,12 +1128,15 @@ V8_EXPORT bool RegisterCSharpType(puerts::JsClassInfo* classInfo)
 V8_EXPORT void ExchangeAPI(puerts::UnityExports * exports)
 {
     exports->SetNativePtr = &puerts::SetNativePtr;
+    exports->CreateJSArrayBuffer = &puerts::CreateJSArrayBuffer;
     exports->UnrefJsObject = &puerts::UnrefJsObject;
     exports->FunctionToDelegate = &puerts::FunctionToDelegate_pesapi;
     exports->SetPersistentObject = &puerts::SetPersistentObject;
     exports->GetPersistentObject = &puerts::GetPersistentObject;
     exports->SetRuntimeObjectToPersistentObject = &puerts::SetRuntimeObjectToPersistentObject;
     exports->GetRuntimeObjectFromPersistentObject = &puerts::GetRuntimeObjectFromPersistentObject;
+    exports->GetJSObjectValue = &puerts::GetJSObjectValue;
+    exports->GetModuleExecutor = &puerts::GetModuleExecutor;
     puerts::GUnityExports = *exports;
 }
 
@@ -1301,18 +1197,7 @@ V8_EXPORT int InspectorTick(puerts::JSEnv* jsEnv)
 
 V8_EXPORT void LogicTick(puerts::JSEnv* jsEnv)
 {
-#ifdef WITH_NODEJS
-    v8::Isolate* Isolate = jsEnv->MainIsolate;
-#ifdef THREAD_SAFE
-    v8::Locker Locker(Isolate);
-#endif
-    v8::Isolate::Scope IsolateScope(Isolate);
-    v8::HandleScope HandleScope(Isolate);
-    v8::Local<v8::Context> Context = jsEnv->MainContext.Get(Isolate);
-    v8::Context::Scope ContextScope(Context);
-    uv_run(jsEnv->NodeUVLoop, UV_RUN_NOWAIT);
-    static_cast<node::MultiIsolatePlatform*>(puerts::GPlatform.get())->DrainTasks(Isolate);
-#endif
+    jsEnv->BackendEnv.LogicTick();
 }
 
 #ifdef __cplusplus

@@ -24,6 +24,8 @@ public class JsEnv : ModuleRules
 
     private bool UseQuickjs = false;
 
+    private bool QjsNamespaceSuffix = false;
+
     private bool WithFFI = false;
     
     private bool ForceStaticLibInEditor = false;
@@ -31,15 +33,22 @@ public class JsEnv : ModuleRules
     private bool ThreadSafe = false;
 
     private bool FTextAsString = true;
-
+    
+    public static bool WithSourceControl = false;
+    
     public JsEnv(ReadOnlyTargetRules Target) : base(Target)
     {
-        //PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+#if UE_5_3_OR_LATER
+        PCHUsage = PCHUsageMode.NoPCHs;
+#endif
         PublicDefinitions.Add("USING_IN_UNREAL_ENGINE");
+        //PublicDefinitions.Add("WITH_V8_FAST_CALL");
         
         PublicDefinitions.Add("TS_BLUEPRINT_PATH=\"/Blueprints/TypeScript/\"");
         
         PublicDefinitions.Add(ThreadSafe ? "THREAD_SAFE" : "NOT_THREAD_SAFE");
+
+        ShadowVariableWarningLevel = WarningLevel.Warning;
 
         if (!FTextAsString)
         {
@@ -68,12 +77,56 @@ public class JsEnv : ModuleRules
             }
         }
 
+        bool bForceAllUFunctionInCPP = false;
+        if (bForceAllUFunctionInCPP)
+        {
+            PublicDefinitions.Add("PUERTS_FORCE_CPP_UFUNCTION=1");
+        }
+        else
+        {
+            PublicDefinitions.Add("PUERTS_FORCE_CPP_UFUNCTION=0");
+        }
+
+        bool bKeepUObjectReference = true;
+        if(bKeepUObjectReference)
+        {
+            PublicDefinitions.Add("PUERTS_KEEP_UOBJECT_REFERENCE=1");
+        }
+        else
+        {
+            PublicDefinitions.Add("PUERTS_KEEP_UOBJECT_REFERENCE=0");
+        }
+
+        bool UseWasm = false;
+        if (UseWasm)
+        {
+            PublicDefinitions.Add("USE_WASM3=1");
+        }
+        else
+        {
+            PublicDefinitions.Add("USE_WASM3=0");
+        }
+        bool OverrideWebAssembly = false;
+        if (OverrideWebAssembly)
+        {
+            PublicDefinitions.Add("WASM3_OVERRIDE_WEBASSEMBLY=1");
+        }
+        else
+        {
+            PublicDefinitions.Add("WASM3_OVERRIDE_WEBASSEMBLY=0");
+        }
+        PublicDependencyModuleNames.AddRange(new string[]
+            {
+                "WasmCore", "Json"
+            });
+
         if (UseNodejs)
         {
             ThirdPartyNodejs(Target);
         }
         else if (UseQuickjs)
         {
+            ForceStaticLibInEditor = true;
             ThirdPartyQJS(Target);
         }
         else if (UseNewV8)
@@ -295,11 +348,10 @@ public class JsEnv : ModuleRules
     
     void MacDylib(string LibraryPath)
     {
-        string V8LibraryPath = Path.Combine(LibraryPath, "macOSdylib");
-        PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libv8.dylib"));
-        PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libv8_libplatform.dylib"));
-        PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libv8_libbase.dylib"));
-        PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libchrome_zlib.dylib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibraryPath, "libv8.dylib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibraryPath, "libv8_libplatform.dylib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibraryPath, "libv8_libbase.dylib"));
+        PublicAdditionalLibraries.Add(Path.Combine(LibraryPath, "libchrome_zlib.dylib"));
     }
 
     void ThirdParty(ReadOnlyTargetRules Target)
@@ -336,11 +388,24 @@ public class JsEnv : ModuleRules
             //PublicFrameworks.AddRange(new string[] { "WebKit" });
             if (!Target.bBuildEditor || ForceStaticLibInEditor)
             {
-                string V8LibraryPath = Path.Combine(LibraryPath, "macOS");
-                PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libwee8.a"));
+                LibraryPath = Path.Combine(LibraryPath, "macOS");
+#if UE_5_2_OR_LATER
+                if (Target.Architecture == UnrealArch.Arm64)
+                {
+                    LibraryPath += "_arm64";
+                }
+#endif
+                PublicAdditionalLibraries.Add(Path.Combine(LibraryPath, "libwee8.a"));
             }
             else
             {
+                LibraryPath = Path.Combine(LibraryPath, "macOSdylib");
+#if UE_5_2_OR_LATER
+                if (Target.Architecture == UnrealArch.Arm64)
+                {
+                    LibraryPath += "_arm64";
+                }
+#endif
                 MacDylib(LibraryPath);
             }
         }
@@ -482,6 +547,12 @@ public class JsEnv : ModuleRules
     {
         PrivateDefinitions.Add("WITHOUT_INSPECTOR");
         PrivateDefinitions.Add("WITH_QUICKJS");
+        if (QjsNamespaceSuffix)
+        {
+            PublicDefinitions.Add("WITH_QJS_NAMESPACE_SUFFIX=1");
+            PublicDefinitions.Add("QJSV8NAMESPACE=v8_qjs");
+        }
+
         PublicIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "..", "..", "ThirdParty", "quickjs", "Inc") });
 
         string LibraryPath = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "ThirdParty", "quickjs", "Lib"));
@@ -489,12 +560,23 @@ public class JsEnv : ModuleRules
         {
             string V8LibraryPath = Path.Combine(LibraryPath, "Win64MD");
 
-            if (Target.bBuildEditor && !ForceStaticLibInEditor)
+            bool UsingSource = false;
+            if (UsingSource)
             {
-                V8LibraryPath = Path.Combine(LibraryPath, "Win64DLL");
-                AddRuntimeDependencies(new string[] { "v8qjs.dll" }, V8LibraryPath, false);
+                PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libquickjs.dll.a"));
+                PrivateDefinitions.Add("BUILDING_V8_SHARED");
             }
-            PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "quickjs.dll.lib"));
+            else
+            {
+                if (Target.bBuildEditor && !ForceStaticLibInEditor)
+                {
+                    V8LibraryPath = Path.Combine(LibraryPath, "Win64DLL");
+                    AddRuntimeDependencies(new string[] { "v8qjs.dll" }, V8LibraryPath, false);
+                }
+
+                PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "quickjs.dll.lib"));
+            }
+
             AddRuntimeDependencies(new string[] { "msys-quickjs.dll" }, V8LibraryPath, false);
             AddRuntimeDependencies(new string[]
             {
@@ -516,12 +598,26 @@ public class JsEnv : ModuleRules
             if (!Target.bBuildEditor || ForceStaticLibInEditor)
             {
                 string V8LibraryPath = Path.Combine(LibraryPath, "macOS");
+#if UE_5_2_OR_LATER
+                if (Target.Architecture == UnrealArch.Arm64)
+                {
+                    V8LibraryPath = Path.Combine(LibraryPath, "macOS_arm64");
+                }
+#endif
                 PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libquickjs.a"));
             }
             else
             {
-                string V8LibraryPath = Path.Combine(LibraryPath, "macOSdylib");
-                PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, "libquickjs.dylib"));
+               string V8LibraryPath = Path.Combine(LibraryPath, "macOSdylib");
+               string QJSDylibName = "libquickjs.dylib";
+#if UE_5_2_OR_LATER
+                if (Target.Architecture == UnrealArch.Arm64)
+                {
+                    V8LibraryPath = Path.Combine(LibraryPath, "macOS_arm64");
+                    QJSDylibName = "libquickjs.a";
+                }
+#endif
+                PublicAdditionalLibraries.Add(Path.Combine(V8LibraryPath, QJSDylibName));
             }
         }
         else if (Target.Platform == UnrealTargetPlatform.IOS)

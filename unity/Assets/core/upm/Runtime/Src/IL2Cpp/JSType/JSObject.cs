@@ -5,6 +5,7 @@
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
 
+#if UNITY_2020_1_OR_NEWER
 #if EXPERIMENTAL_IL2CPP_PUERTS && ENABLE_IL2CPP
 
 using System;
@@ -30,6 +31,17 @@ namespace Puerts
             throw new NotImplementedException();
         }
 
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        object GetJSObjectValue(string key, Type resultType)
+        {
+            throw new NotImplementedException();
+        }
+
+        public T Get<T>(string key) 
+        {
+            return (T)GetJSObjectValue(key, typeof(T));
+        }
+
         ~JSObject()
         {
             releaseScriptObject();
@@ -37,4 +49,5 @@ namespace Puerts
     }
 }
 
+#endif
 #endif

@@ -18,14 +18,14 @@ namespace Puerts.Editor
     namespace Generator {
 
         public class UnityMenu {
-            public const string PUERTS_MENU_PREFIX = "PuerTS";
+            public const string PUERTS_MENU_PREFIX = "Tools/PuerTS";
 
 #if !PUERTS_GENERAL
             [MenuItem(PUERTS_MENU_PREFIX + "/Generate (all in one)", false, 1)]
-            public static void GenV1() {
+            public static void GenV1() 
+            {
                 Puerts.Editor.Generator.UnityMenu.GenerateCode();
                 Puerts.Editor.Generator.UnityMenu.GenerateDTS();
-                Puerts.Editor.Generator.UnityMenu.GenerateMacroHeader(false);
             }
             
             [MenuItem(PUERTS_MENU_PREFIX + "/Generate/Wrapper Code", false, 6)]
@@ -36,13 +36,14 @@ namespace Puerts.Editor
                 Directory.CreateDirectory(saveTo);
 
                 FileExporter.ExportWrapper(saveTo);
+                Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
                 Debug.Log("finished! use " + (DateTime.Now - start).TotalMilliseconds + " ms");
                 AssetDatabase.Refresh();
 
-                Utils.filters = null;
+                Utils.SetFilters(null);
             }
 
-            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/index.d.ts (global.CS style)", false, 6)]
+            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/index.d.ts", false, 6)]
             public static void GenerateDTS()
             {
                 var start = DateTime.Now;
@@ -53,10 +54,8 @@ namespace Puerts.Editor
                 Debug.Log("finished! use " + (DateTime.Now - start).TotalMilliseconds + " ms");
                 AssetDatabase.Refresh();
 
-                Utils.filters = null;
+                Utils.SetFilters(null);
             }
-
-            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/index.d.ts (require('csharp') style)", false, 6)]
             public static void GenerateDTSOldStyle()
             {
                 var start = DateTime.Now;
@@ -67,26 +66,7 @@ namespace Puerts.Editor
                 Debug.Log("finished! use " + (DateTime.Now - start).TotalMilliseconds + " ms");
                 AssetDatabase.Refresh();
 
-                Utils.filters = null;
-            }
-
-            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/il2cpp macro .h", false, 6)]
-            public static void GenerateMacroHeader() {
-#if !EXPERIMENTAL_IL2CPP_PUERTS
-                GenerateMacroHeader(false);
-#else
-                GenerateMacroHeader(true);
-#endif
-            }
-            public static void GenerateMacroHeader(bool forceIl2Cpp)
-            {
-#if PUERTS_CPP_OUTPUT_TO_NATIVE_SRC_UPM
-                var saveTo = Path.Combine(Path.GetFullPath("Packages/com.tencent.puerts.core/"), "Plugins/puerts_il2cpp/");
-#else
-                var saveTo = Puerts.Configure.GetCodeOutputDirectory();
-#endif
-                Directory.CreateDirectory(saveTo);
-                FileExporter.GenMarcoHeader(saveTo, forceIl2Cpp);
+                Utils.SetFilters(null);
             }
 
             [MenuItem(PUERTS_MENU_PREFIX + "/Clear Generated Code", false, 9)]
@@ -101,6 +81,16 @@ namespace Puerts.Editor
                 }
             }
 
+            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/RegisterInfo", false, 7)]
+            public static void GenRegisterInfo()
+            {
+                var start = DateTime.Now;
+                var saveTo = Puerts.Configure.GetCodeOutputDirectory();
+                Directory.CreateDirectory(saveTo);
+                FileExporter.GenRegisterInfo(saveTo);
+                Debug.Log("finished! use " + (DateTime.Now - start).TotalMilliseconds + " ms Outputed to " + saveTo);
+                AssetDatabase.Refresh();
+            }
 #endif
         }
     }

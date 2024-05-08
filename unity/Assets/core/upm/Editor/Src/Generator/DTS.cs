@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Puerts.TypeMapping;
 
 namespace Puerts.Editor
 {
@@ -244,6 +245,7 @@ namespace Puerts.Editor
                 public bool IsDelegate;
                 public string DelegateDef;
                 public bool IsInterface;
+                public string IteratorReturnName;
                 public string Namespace;
                 public TsTypeGenInfo BaseType;
                 public TsTypeGenInfo[] interfaces;
@@ -344,6 +346,12 @@ namespace Puerts.Editor
                                 Document = DocResolver.GetTsDocument(interfaces[i]),
                                 Namespace = interfaces[i].Namespace
                             };
+
+                            if (!type.IsInterface && result.IsGenericTypeDefinition && interfaces[i].IsGenericType &&
+                                typeof(IEnumerable<>) == interfaces[i].GetGenericTypeDefinition())
+                            {
+                                result.IteratorReturnName = Utils.GetTsTypeName(interfaces[i].GetGenericArguments()[0]);
+                            }
                             if (interfaces[i].IsNested)
                             {
                                 List<string> p = new List<string>();
@@ -410,13 +418,18 @@ namespace Puerts.Editor
                                 temp = temp.DeclaringType;
                             }
                             p.Reverse();
+                            string pstr = string.Join(".", p.ToArray());
+                            if (pstr.Length > 0 && result.BaseType.Name.StartsWith(pstr))
+                            {
+                                result.BaseType.Name = result.BaseType.Name.Substring(pstr.Length + 1);
+                            }
                             if (type.BaseType.Namespace != null)
                             {
-                                result.BaseType.Namespace = type.BaseType.Namespace + '.' + string.Join(".", p.ToArray());
+                                result.BaseType.Namespace = type.BaseType.Namespace + '.' + pstr;
                             }
                             else
                             {
-                                result.BaseType.Namespace = string.Join(".", p.ToArray());
+                                result.BaseType.Namespace = pstr;
                             }
                         }
                         if (type.BaseType.IsGenericType && type.BaseType.Namespace != null)
@@ -456,12 +469,12 @@ namespace Puerts.Editor
                         AddRefType(workTypes, refTypes, type);
                         var defType = type.IsGenericType ? type.GetGenericTypeDefinition() : type;
                         if (!genTypeSet.Contains(defType)) genTypeSet.Add(defType);
-                        foreach (var field in type.GetFields(Utils.Flags))
+                        foreach (var field in type.GetFields(Utils.Flags).Where(m => Utils.getBindingMode(m) != BindingMode.DontBinding))
                         {
                             AddRefType(workTypes, refTypes, field.FieldType);
                         }
 
-                        foreach (var method in type.GetMethods(Utils.Flags))
+                        foreach (var method in type.GetMethods(Utils.Flags).Where(m => Utils.getBindingMode(m) != BindingMode.DontBinding))
                         {
                             AddRefType(workTypes, refTypes, method.ReturnType);
                             foreach (var pinfo in method.GetParameters())
@@ -668,8 +681,10 @@ namespace Puerts.Editor
                         }
                     }
 
-                    if (refTypes.Contains(rawType) || type.IsPointer || rawType.IsPointer) return;
-                    if (!rawType.IsGenericParameter)
+                    // if type == rawType, there is a chance that the type is already added to refTypes when it was a rawType.
+                    // so, when refTypes contains rawType but type == rawType, most of the remain logic is still needed to run. 
+                    if ((refTypes.Contains(rawType) && type != rawType) || type.IsPointer || rawType.IsPointer) return;
+                    if (!rawType.IsGenericParameter && !refTypes.Contains(rawType))
                     {
                         refTypes.Add(rawType);
                     }

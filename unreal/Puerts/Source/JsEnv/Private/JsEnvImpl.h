@@ -15,7 +15,7 @@
 #include "V8Utils.h"
 #include "ObjectMapper.h"
 #include "JSLogger.h"
-#include "TickerDelegateWrapper.h"
+#include "ObjectRetainer.h"
 #if !defined(ENGINE_INDEPENDENT_JSENV)
 #include "TypeScriptGeneratedClass.h"
 #endif
@@ -33,6 +33,8 @@
 #include "v8.h"
 #pragma warning(pop)
 
+#include "NamespaceDef.h"
+
 #include "V8InspectorImpl.h"
 
 #if defined(WITH_NODEJS)
@@ -42,13 +44,18 @@
 #pragma warning(pop)
 #endif
 
+#if USE_WASM3
+#include "WasmRuntime.h"
+#include "PuertsWasm/WasmJsFunctionParams.h"
+#endif
+
 #if V8_MAJOR_VERSION < 8 || defined(WITH_QUICKJS) || defined(WITH_NODEJS) || (WITH_EDITOR && !defined(FORCE_USE_STATIC_V8_LIB))
 #define WITH_BACKING_STORE_AUTO_FREE 0
 #else
 #define WITH_BACKING_STORE_AUTO_FREE 1
 #endif
 
-namespace puerts
+namespace PUERTS_NAMESPACE
 {
 class JSError
 {
@@ -70,8 +77,8 @@ public:
     explicit FJsEnvImpl(const FString& ScriptRoot);
 
     FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::shared_ptr<ILogger> InLogger, int InPort,
-        std::function<void(const FString&)> InOnSourceLoadedCallback, void* InExternalRuntime = nullptr,
-        void* InExternalContext = nullptr);
+        std::function<void(const FString&)> InOnSourceLoadedCallback, const FString InFlags, void* InExternalRuntime,
+        void* InExternalContext);
 
     virtual ~FJsEnvImpl() override;
 
@@ -126,13 +133,18 @@ public:
     virtual void OnSourceLoaded(std::function<void(const FString&)> Callback) override;
 
 public:
-    bool IsNativeTakeJsRef(UClass* Class);
+    bool IsTypeScriptGeneratedClass(UClass* Class);
+
+    void SetJsTakeRef(UObject* UEObject, FClassWrapper* ClassWrapper);
 
     virtual void Bind(FClassWrapper* ClassWrapper, UObject* UEObject, v8::Local<v8::Object> JSObject) override;
 
     virtual void UnBind(UClass* Class, UObject* UEObject) override;
 
     virtual void UnBind(UClass* Class, UObject* UEObject, bool ResetPointer);
+
+    v8::Local<v8::Value> FindOrAdd(
+        v8::Isolate* InIsolate, v8::Local<v8::Context>& Context, UClass* Class, UObject* UEObject, bool SkipTypeScriptInitial);
 
     virtual v8::Local<v8::Value> FindOrAdd(
         v8::Isolate* InIsolate, v8::Local<v8::Context>& Context, UClass* Class, UObject* UEObject) override;
@@ -156,13 +168,17 @@ public:
     virtual void Merge(
         v8::Isolate* Isolate, v8::Local<v8::Context> Context, v8::Local<v8::Object> Src, UStruct* DesType, void* Des) override;
 
-    virtual void BindContainer(
-        void* Ptr, v8::Local<v8::Object> JSObject, void (*Callback)(const v8::WeakCallbackInfo<void>& data)) override;
+    enum ContainerType
+    {
+        EArray,
+        EMap,
+        ESet
+    };
+
+    void BindContainer(void* Ptr, v8::Local<v8::Object> JSObject, void (*Callback)(const v8::WeakCallbackInfo<void>& data),
+        bool PassByPointer, ContainerType Type);
 
     virtual void UnBindContainer(void* Ptr) override;
-
-    virtual v8::Local<v8::Value> FindOrAddContainer(v8::Isolate* Isolate, v8::Local<v8::Context>& Context,
-        v8::Local<v8::Function> Constructor, PropertyMacro* Property1, PropertyMacro* Property2, void* Ptr, bool PassByPointer);
 
     virtual v8::Local<v8::Value> FindOrAddContainer(v8::Isolate* Isolate, v8::Local<v8::Context>& Context, PropertyMacro* Property,
         FScriptArray* Ptr, bool PassByPointer) override;
@@ -181,7 +197,7 @@ public:
 
     virtual PropertyMacro* FindDelegateProperty(void* DelegatePtr) override;
 
-    virtual FScriptDelegate NewManualReleaseDelegate(v8::Isolate* Isolate, v8::Local<v8::Context>& Context,
+    virtual FScriptDelegate NewDelegate(v8::Isolate* Isolate, v8::Local<v8::Context>& Context, UObject* Owner,
         v8::Local<v8::Function> JsFunction, UFunction* SignatureFunction) override;
 
     void ReleaseManualReleaseDelegate(const v8::FunctionCallbackInfo<v8::Value>& Info);
@@ -196,7 +212,7 @@ public:
 
     virtual bool IsInstanceOf(UStruct* Struct, v8::Local<v8::Object> JsObject) override;
 
-    virtual bool IsInstanceOfCppObject(const void* TypeId, v8::Local<v8::Object> JsObject) override;
+    virtual bool IsInstanceOfCppObject(v8::Isolate* Isolate, const void* TypeId, v8::Local<v8::Object> JsObject) override;
 
     virtual std::weak_ptr<int> GetJsEnvLifeCycleTracker() override;
 
@@ -219,6 +235,8 @@ public:
     void InvokeJsMethod(UObject* ContextObject, UJSGeneratedFunction* Function, FFrame& Stack, void* RESULT_PARAM);
 
     void InvokeMixinMethod(UObject* ContextObject, UJSGeneratedFunction* Function, FFrame& Stack, void* RESULT_PARAM);
+
+    void TypeScriptInitial(UClass* Class, UObject* Object, const bool TypeScriptClassFound = false);
 
     void InvokeTsMethod(UObject* ContextObject, UFunction* Function, FFrame& Stack, void* RESULT_PARAM);
 
@@ -247,7 +265,7 @@ private:
     bool LoadFile(const FString& RequiringDir, const FString& ModuleName, FString& OutPath, FString& OutDebugPath,
         TArray<uint8>& Data, FString& ErrInfo);
 
-    void ExecuteModule(const FString& ModuleName, std::function<FString(const FString&, const FString&)> Preprocessor = nullptr);
+    void ExecuteModule(const FString& ModuleName);
 
     void EvalScript(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
@@ -264,6 +282,8 @@ private:
     void LoadCppType(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
     void UEClassToJSClass(const v8::FunctionCallbackInfo<v8::Value>& Info);
+
+    void SetJsTakeRefInTs(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
     bool GetContainerTypeProperty(v8::Local<v8::Context> Context, v8::Local<v8::Value> Value, PropertyMacro** PropertyPtr);
 
@@ -287,10 +307,9 @@ private:
 
     void SetFTickerDelegate(const v8::FunctionCallbackInfo<v8::Value>& Info, bool Continue);
 
-    void ReportExecutionException(
-        v8::Isolate* Isolate, v8::TryCatch* TryCatch, std::function<void(const JSError*)> CompletionHandler);
+    bool TimerCallback(int DelegateHandleId, bool Continue);
 
-    void RemoveFTickerDelegateHandle(FUETickDelegateHandle* Handle);
+    void RemoveFTickerDelegateHandle(int HandleId);
 
     void SetInterval(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
@@ -412,6 +431,24 @@ private:
 
     friend ObjectMerger;
 
+#if USE_WASM3
+    std::shared_ptr<WasmEnv> PuertsWasmEnv;
+    //在执行module.instance的时候,如果有指定memory,那么这个module对应会创建一个runtime
+    TArray<std::shared_ptr<WasmRuntime>> PuertsWasmRuntimeList;
+    TArray<WasmNormalLinkInfo*> PuertsWasmCachedLinkFunctionList;
+
+protected:
+    void Wasm_NewMemory(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_MemoryGrowth(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_MemoryBuffer(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_TableGrowth(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_TableSet(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_TableLen(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_Instance(const v8::FunctionCallbackInfo<v8::Value>& Info);
+    void Wasm_OverrideWebAssembly(const v8::FunctionCallbackInfo<v8::Value>& Info);
+
+#endif
+
 public:
 #if !defined(ENGINE_INDEPENDENT_JSENV)
     class TsDynamicInvokerImpl : public ITsDynamicInvoker
@@ -447,9 +484,9 @@ public:
     TSharedPtr<IDynamicInvoker, ESPMode::ThreadSafe> MixinInvoker;
 #endif
 private:
-    puerts::FObjectRetainer UserObjectRetainer;
+    FObjectRetainer UserObjectRetainer;
 
-    puerts::FObjectRetainer SysObjectRetainer;
+    FObjectRetainer SysObjectRetainer;
 
     std::shared_ptr<IJSModuleLoader> ModuleLoader;
 
@@ -506,6 +543,14 @@ private:
 
     v8::Global<v8::Function> ReloadJs;
 
+#if !PUERTS_FORCE_CPP_UFUNCTION
+    v8::Global<v8::Function> MergePrototype;
+#endif
+
+    v8::Global<v8::Function> RemoveListItem;
+
+    v8::Global<v8::Function> GenListApply;
+
     TMap<UStruct*, FTemplateInfo> TypeToTemplateInfoMap;
 
     TMap<FString, std::shared_ptr<FStructWrapper>> TypeReflectionMap;
@@ -514,18 +559,16 @@ private:
 
     TMap<void*, FObjectCacheNode> StructCache;
 
-    TMap<void*, v8::UniquePersistent<v8::Value>> ContainerCache;
+    struct ContainerCacheItem
+    {
+        v8::UniquePersistent<v8::Value> Container;
+        bool NeedRelease;
+        ContainerType Type;
+    };
+
+    TMap<void*, ContainerCacheItem> ContainerCache;
 
     FCppObjectMapper CppObjectMapper;
-
-#if !WITH_BACKING_STORE_AUTO_FREE && !defined(HAS_ARRAYBUFFER_NEW_WITHOUT_STL)
-    struct ScriptStructFinalizeInfo
-    {
-        TWeakObjectPtr<UStruct> Struct;
-        FinalizeFunc Finalize;
-    };
-    TMap<void*, ScriptStructFinalizeInfo> ScriptStructFinalizeInfoMap;
-#endif
 
     v8::UniquePersistent<v8::FunctionTemplate> ArrayTemplate;
 
@@ -559,15 +602,15 @@ private:
         MulticastDelegatePropertyMacro* MulticastDelegateProperty;
         UFunction* SignatureFunction;
         bool PassByPointer;
-        TWeakObjectPtr<UDynamicDelegateProxy> Proxy;           // for delegate
-        TSet<TWeakObjectPtr<UDynamicDelegateProxy>> Proxys;    // for MulticastDelegate
+        TWeakObjectPtr<UDynamicDelegateProxy> Proxy;
+        v8::UniquePersistent<v8::Array> JsCallbacks;
     };
 
     struct TsFunctionInfo
     {
         v8::UniquePersistent<v8::Function> JsFunction;
 
-        std::unique_ptr<puerts::FFunctionTranslator> FunctionTranslator;
+        std::unique_ptr<FFunctionTranslator> FunctionTranslator;
     };
 
     class DynamicInvokerImpl : public IDynamicInvoker
@@ -641,7 +684,13 @@ private:
 
     bool ExtensionMethodsMapInited = false;
 
-    std::map<FUETickDelegateHandle*, FTickerDelegateWrapper*> TickerDelegateHandleMap;
+    struct FTimerInfo
+    {
+        v8::Global<v8::Function> Callback;
+        FUETickDelegateHandle TickerHandle;
+    };
+    uint32_t TimerID = 0;
+    TMap<uint32_t, FTimerInfo> TimerInfos;
 
     FUETickDelegateHandle DelegateProxiesCheckerHandler;
 
@@ -656,6 +705,8 @@ private:
     v8::Global<v8::Map> ManualReleaseCallbackMap;
 
     std::vector<TWeakObjectPtr<UDynamicDelegateProxy>> ManualReleaseCallbackList;
+
+    TMap<UObject*, TArray<TWeakObjectPtr<UDynamicDelegateProxy>>> AutoReleaseCallbacksMap;
 
 #ifndef WITH_QUICKJS
     TMap<FString, v8::Global<v8::Module>> PathToModule;
@@ -691,4 +742,4 @@ private:
     };
 };
 
-}    // namespace puerts
+}    // namespace PUERTS_NAMESPACE

@@ -21,7 +21,9 @@
 #include "v8.h"
 #pragma warning(pop)
 
-namespace puerts
+#include "NamespaceDef.h"
+
+namespace PUERTS_NAMESPACE
 {
 class FFunctionTranslator
 {
@@ -105,6 +107,8 @@ protected:
 
     bool IsStatic;
 
+    bool SkipWorldContextInArg0;
+
     uint32 ParamsBufferSize;
 
     void* ArgumentDefaultValues;
@@ -142,4 +146,4 @@ private:
 
     bool IsUObject;
 };
-}    // namespace puerts
+}    // namespace PUERTS_NAMESPACE

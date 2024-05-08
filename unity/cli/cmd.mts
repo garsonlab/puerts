@@ -3,7 +3,7 @@ import { Option, program } from "commander";
 import { join } from "path";
 import downloadBackend from "./backend.mjs";
 import { dotnetTest, unityTest } from "./test.mjs";
-import runPuertsMake, { platformCompileConfig } from "./make.mjs";
+import runPuertsMake, { makeOSXUniveralBinary, platformCompileConfig } from "./make.mjs";
 
 setWinCMDEncodingToUTF8();
 
@@ -18,15 +18,15 @@ program
     .addOption(
         new Option("--platform <platform>", "the target platform")
             .default("")
-            .choices(["win", "osx", "linux", "android", "ios"])
+            .choices(["win", "osx", "linux", "android", "ios", "ohos"])
     )
     .addOption(
-        new Option("--arch <arch>", "the target architecture")
+        new Option("--arch <arch>", "the target architecture. 'auto' means build all available archs for the platform and universal binary will be created in osx.")
             .default("auto")
             .choices(["auto", "ia32", "x64", "arm64", "armv7"])
     )
     .addOption(
-        new Option("--config <ReleaseOrDebug>", "the target architecture")
+        new Option("--config <ReleaseOrDebug>", "Debug ver or Release ver. In Windows, Debug means DebugWithRelInfo")
             .default("Release")
             .choices(["Release", "Debug"])
     )
@@ -37,28 +37,7 @@ program
         let platform = options.platform;
         let arch = options.arch;
 
-        if (!quickcommand) {
-            if (options.platform && options.arch == 'auto') {
-                let promiseChain = Promise.resolve();
-                Object.keys((platformCompileConfig as any)[options.platform]).forEach(arch => {
-                    promiseChain = promiseChain.then(function () {
-                        //@ts-ignore
-                        options.arch = arch;
-                        return runPuertsMake(cwd, options)
-                    })
-                });
-
-            } else if (!options.platform && options.arch == 'auto') {
-                options.platform = (nodePlatformToPuerPlatform as any)[process.platform]
-                //@ts-ignore
-                options.arch = process.arch;
-                runPuertsMake(cwd, options);
-
-            } else {
-                runPuertsMake(cwd, options);
-            }
-
-        } else {
+        if (quickcommand) {
             switch (quickcommand[0]) {
                 case 'v':
                     backend = 'v8_9.4'; break;
@@ -96,6 +75,8 @@ program
                     arch = 'armv7'; break;
                 case '8':
                     arch = 'arm64'; break;
+                case '0':
+                    arch = 'auto'; break;
 
                 default:
                     throw new Error(`invalid command[2] : ${quickcommand[2]}`);
@@ -110,7 +91,35 @@ program
             }
 
             console.log('quick command parse result:', { backend, config, arch, platform });
-            runPuertsMake(cwd, { backend, config, arch, platform });
+            options = { backend, config, arch, platform };
+
+        }
+
+        if (options.platform && options.arch == 'auto') {
+            let promiseChain = Promise.resolve();
+            const outputs: string[][] = []
+            Object.keys((platformCompileConfig as any)[options.platform]).forEach(arch => {
+                promiseChain = promiseChain.then(function () {
+                    //@ts-ignore
+                    options.arch = arch;
+                    return runPuertsMake(cwd, options).then(res => {
+                        outputs.push(res);
+                    })
+                })
+            });
+            if (options.platform == 'osx') {
+                // if arch is not specified, make universal binary
+                promiseChain = promiseChain.then(() => makeOSXUniveralBinary(cwd, outputs));
+            }
+
+        } else if (!options.platform && options.arch == 'auto') {
+            options.platform = (nodePlatformToPuerPlatform as any)[process.platform]
+            //@ts-ignore
+            options.arch = process.arch;
+            runPuertsMake(cwd, options);
+
+        } else {
+            runPuertsMake(cwd, options);
         }
     })
 
@@ -128,9 +137,13 @@ backendProgram
 
 program
     .command("dotnet-test [backend]")
-    // .option("--backend <backend>", "the JS backend will be used", "v8_9.4")
-    .action((backend: string) => {
-        dotnetTest(cwd, backend || "quickjs");
+    .option("--filter <filter>", "testcase will be filtered", "")
+    .option('-sq, --switch_qjs', 'switch to quickjs backend')
+    .action((backend: string, options: any) => {
+        if (options.switch_qjs) {
+            process.env.SwitchToQJS = '1';
+        }
+        dotnetTest(cwd, backend || "quickjs", options.filter);
     });
 
 program

@@ -5,6 +5,7 @@
 #include "UObject/MetaData.h"
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
+#include "UECompatible.h"
 
 const TCHAR* UPEClassMetaData::NAME_HideCategories{TEXT("HideCategories")};
 const TCHAR* UPEClassMetaData::NAME_ShowCategories{TEXT("ShowCategories")};
@@ -337,10 +338,14 @@ void UPEClassMetaData::SyncClassToBlueprint(UClass* InClass, UBlueprint* InBluep
 
 void UPEClassMetaData::SetAndValidateWithinClass(UClass* InClass)
 {
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
+    UClass* ExpectedWithinClass = InClass->GetSuperClass() ? InClass->GetSuperClass()->ClassWithin.Get() : UObject::StaticClass();
+#else
     UClass* ExpectedWithinClass = InClass->GetSuperClass() ? InClass->GetSuperClass()->ClassWithin : UObject::StaticClass();
+#endif
     if (ClassWithIn.IsEmpty() == false)
     {
-        UClass* WithinClass = FindObject<UClass>(ANY_PACKAGE, *ClassWithIn);
+        UClass* WithinClass = PUERTS_NAMESPACE::FindAnyType<UClass>(ClassWithIn);
         if (WithinClass == nullptr)
         {
             UE_LOG(LogTemp, Error, TEXT("the with in class of %s: %s is not found"), *InClass->GetName(), *ClassWithIn);
@@ -586,6 +591,16 @@ bool UPEPropertyMetaData::Apply(FBPVariableDescription& Element) const
 
     //	set meta data
     bool bMetaDataChanged = false;
+
+    for (int Index = Element.MetaDataArray.Num() - 1; Index >= 0; --Index)
+    {
+        if (!MetaData.Contains(Element.MetaDataArray[Index].DataKey))
+        {
+            bMetaDataChanged = true;
+            Element.MetaDataArray.RemoveAt(Index);
+        }
+    }
+
     for (const auto& Pair : MetaData)
     {
         if (const auto MetaDataEntryPtr = Element.MetaDataArray.FindByPredicate(

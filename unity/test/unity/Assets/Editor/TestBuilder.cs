@@ -1,3 +1,4 @@
+#if !UNITY_WEBGL
 using System;
 using System.IO;
 using UnityEngine;
@@ -9,27 +10,26 @@ public class TestBuilder
 {
     public static void GenV1() 
     {
-        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Standalone, "");
         Puerts.Editor.Generator.UnityMenu.GenerateCode();
-        Puerts.Editor.Generator.UnityMenu.GenerateMacroHeader(false);
     }
+    [MenuItem("PuerTS/Tester/BuildV1")]
+    public static void BuildWindowsV1() { BuildWindows(false); }
+
+#if EXPERIMENTAL_IL2CPP_PUERTS
     public static void GenV2() 
     {
-        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Standalone, "EXPERIMENTAL_IL2CPP_PUERTS");
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppWrappers();
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateExtensionMethodInfos();
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateLinkXML();
-        Puerts.Editor.Generator.UnityMenu.GenerateMacroHeader(true);
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppPlugin();
+        Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
     }
-
-    [MenuItem("PuerTS/Tester/BuildV1")]
-    public static void BuildWindowsV1() { BuildWindows(false); }
     [MenuItem("PuerTS/Tester/BuildV2")]
     public static void BuildWindowsV2() { BuildWindows(true); }
+#endif
 
     public static void BuildWindows(bool withV2) 
     {
-        PlayerSettings.SetScriptingDefineSymbolsForGroup(BuildTargetGroup.Standalone, withV2 ? "EXPERIMENTAL_IL2CPP_PUERTS" : "");
         PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
 
         BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
@@ -52,3 +52,4 @@ public class TestBuilder
         }
     }
 }
+#endif

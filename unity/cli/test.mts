@@ -10,16 +10,28 @@ function collectCSFilesAndMakeCompileConfig(dir: string, workdir: string, exclud
 
     const definitions = `
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-        <DefineConstants>PUER_CONSOLE_TEST;PUERTS_GENERAL;DISABLE_AUTO_REGISTER;TRACE;DEBUG;NETSTANDARD;NETSTANDARD2_1;</DefineConstants>
+        <DefineConstants>${process.platform == 'win32' ? 'PLATFORM_WINDOWS': 'PLATFORM_MAC'};PUER_CONSOLE_TEST;PUERTS_GENERAL;DISABLE_AUTO_REGISTER;PUERTS_REFLECT_ALL_EXTENSION;TRACE;DEBUG;NETSTANDARD;NETSTANDARD2_1;</DefineConstants>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <WarningLevel>0</WarningLevel>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
     `
     const linkPuerTS = `
     <ItemGroup>
-        ${glob.sync(join(dir, '../packages/core/upm/**/*.cs').replace(/\\/g, '/'))
+        ${glob.sync(join(dir, '../../Assets/core/upm/**/*.cs').replace(/\\/g, '/'))
             .map(pathname =>
 `    <Compile Include="${relative(workdir, pathname).replace(/\//, '\\')}">
-            <Link>${relative(join(dir, '../packages/core/upm/'), pathname).replace(/\//, '\\')}</Link>
+            <Link>${relative(join(dir, '../../Assets/core/upm/'), pathname).replace(/\//, '\\')}</Link>
+        </Compile>`
+            ).join('\n')}
+    </ItemGroup>
+    `
+    const linkPuerTSCommonJS = `
+    <ItemGroup>
+        ${glob.sync(join(dir, '../../Assets/commonjs/upm/Runtime/**/*.cs').replace(/\\/g, '/'))
+            .map(pathname =>
+`    <Compile Include="${relative(workdir, pathname).replace(/\//, '\\')}">
+            <Link>${relative(join(dir, '../../Assets/commonjs/upm/Runtime/'), pathname).replace(/\//, '\\')}</Link>
         </Compile>`
             ).join('\n')}
     </ItemGroup>
@@ -27,25 +39,38 @@ function collectCSFilesAndMakeCompileConfig(dir: string, workdir: string, exclud
     
     const linkUnitTests = `
     <ItemGroup>
-        ${glob.sync(join(dir, './Src/**/*.cs').replace(/\\/g, '/'))
-            .filter(pathname => !excludeGenerator || pathname.indexOf('WrapperGenerator') == -1)
+        ${glob.sync(join(dir, '../Src/Cases/**/*.cs').replace(/\\/g, '/'))
             .map(pathname =>
 `    <Compile Include="${relative(workdir, pathname).replace(/\//, '\\')}">
-            <Link>${relative(join(dir, './Src'), pathname).replace(/\//, '\\')}</Link>
+            <Link>${relative(join(dir, '../Src/Cases'), pathname).replace(/\//, '\\')}</Link>
         </Compile>`
             ).join('\n')
         }
     </ItemGroup>
     `
-    return [definitions, linkPuerTS, linkUnitTests].join('\n');
+
+    const linkGenerators = `
+    <ItemGroup>
+        ${glob.sync(join(dir, './Src/**/*.cs').replace(/\\/g, '/'))
+            .filter(pathname => excludeGenerator ? pathname.indexOf('WrapperGenerator') == -1 : true)
+            .map(pathname =>
+`    <Compile Include="${relative(workdir, pathname).replace(/\//, '\\')}">
+            <Link>${relative(join(dir, './Src/'), pathname).replace(/\//, '\\')}</Link>
+        </Compile>`
+            ).join('\n')
+        }
+    </ItemGroup>
+    `
+    return [definitions, linkPuerTS, linkPuerTSCommonJS, linkUnitTests, linkGenerators].join('\n');
 }
 
-export async function dotnetTest(cwd: string, backend: string) {
+async function runTest(cwd: string, copyConfig: any, runInReflection: boolean, filter: string = '') {
     if (!existsSync(`${cwd}/Src/Helloworld.cs`)) {
         console.error("[Puer] Cannot find UnitTest Src");
         process.exit();
     }
-    const workdir = join(cwd, "vsauto");
+    const testProjectName = "vsauto-" + (runInReflection ? 'reflect' : 'static');
+    const workdir = join(cwd, testProjectName);
 
     rm("-rf", workdir);
     rm("-rf", join(cwd, 'Src/StaticWrapper'));
@@ -56,39 +81,67 @@ export async function dotnetTest(cwd: string, backend: string) {
     rm('-rf', join(workdir, 'Usings.cs'));
     
     const originProjectConfig = readFileSync(
-        join(workdir, 'vsauto.csproj'), 'utf-8'
+        join(workdir, `${testProjectName}.csproj`), 'utf-8'
     );
-    // 生成
-    writeFileSync(
-        join(workdir, 'vsauto.csproj'),
-        originProjectConfig.replace('</Project>', [collectCSFilesAndMakeCompileConfig(cwd, workdir, false), '</Project>'].join('\n'))
-    );
-    assert.equal(0, exec(`dotnet build vsauto.csproj -p:StartupObject=PuerGen -v quiet`, { cwd: workdir }).code)
-    
-    const copyConfig = await runPuertsMake(join(cwd, '../native_src'), {
-        platform: process.platform == 'win32' ? 'win' : 'osx',
-        config: "Debug",
-        backend: backend,
-        arch: process.arch as any
-    })
 
     const binPath = join(workdir, './bin/Debug');
+    mkdir("-p", binPath);
     copyConfig.forEach((fileToCopy: string)=> {
         const ext = extname(fileToCopy)
         cp(fileToCopy, binPath + (ext == '.bundle' ? `/lib${basename(fileToCopy, ext)}.dylib`: ''));
     })
-
-    // 运行generate
-    mkdir('-p', join(cwd, "Src/StaticWrapper"));
-    assert.equal(0, exec(`dotnet run --project vsauto.csproj`, { cwd: workdir }).code)
-
-    // 带上wrapper重新生成csproj并运行测试
+    
+    mkdir("-p", join(workdir, 'Properties'));
+    // 生成launchSettings.json
     writeFileSync(
-        join(workdir, 'vsauto.csproj'),
-        originProjectConfig.replace('</Project>', [collectCSFilesAndMakeCompileConfig(cwd, workdir, true), '</Project>'].join('\n'))
+        join(workdir, 'Properties', 'launchSettings.json'),
+        JSON.stringify({
+          "profiles": {
+            "vsauto-static": {
+              "commandName": "Project",
+              "nativeDebugging": true
+            }
+          }
+        })
     );
-    assert.equal(0, exec(`dotnet build vsauto.csproj -p:StartupObject=PuertsTest -v quiet`, { cwd: workdir }).code)
-    assert.equal(0, exec(`dotnet test vsauto.csproj`, { cwd: workdir }).code)
+
+    if (!runInReflection) {
+        // 生成project 用于跑wrapper
+        writeFileSync(
+            join(workdir, `${testProjectName}.csproj`),
+            originProjectConfig.replace('</Project>', [collectCSFilesAndMakeCompileConfig(cwd, workdir, false), '</Project>'].join('\n'))
+        );
+
+        assert.equal(0, exec(`dotnet build ${testProjectName}.csproj -p:StartupObject=PuerGen -v quiet`, { cwd: workdir }).code)
+    
+        // 运行generate
+        mkdir('-p', join(cwd, "Src/StaticWrapper"));
+        assert.equal(0, exec(`dotnet run --project ${testProjectName}.csproj`, { cwd: workdir }).code)
+
+    }
+
+    // 生成csproj
+    writeFileSync(
+        join(workdir, `${testProjectName}.csproj`),
+        originProjectConfig.replace('</Project>', [collectCSFilesAndMakeCompileConfig(cwd, workdir, !runInReflection), '</Project>'].join('\n'))
+    );
+
+    // 运行测试
+    assert.equal(0, exec(`dotnet build ${testProjectName}.csproj -p:StartupObject=PuertsTest -v quiet`, { cwd: workdir }).code)
+    assert.equal(0, exec(`dotnet test ${testProjectName}.csproj --blame-hang-timeout 10000ms ${filter ? `--filter ${filter}` : ''}`, { cwd: workdir }).code)
+}
+
+export async function dotnetTest(cwd: string, backend: string, filter: string = '') {
+    // 编译binary
+    const copyConfig = await runPuertsMake(join(cwd, '../../native_src'), {
+        platform: process.platform == 'win32' ? 'win' : (process.platform == 'linux' ? 'linux' : 'osx'),
+        config: "Debug",
+        backend: backend || 'v8_9.4',
+        arch: process.arch as any
+    })
+
+    // await runTest(cwd, copyConfig, true, filter);
+    await runTest(cwd, copyConfig, false, filter);
 }
 
 
@@ -107,7 +160,7 @@ export async function unityTest(cwd: string, unityPath: string) {
         rm("-rf", `${cwd}/Assets/Gen.meta`);
         console.log("[Puer] Building puerts v1");
         await runPuertsMake(join(cwd, '../../native_src'), {
-            backend: 'v8_9.4',
+            backend: 'nodejs_16',
             platform: 'win',
             config: 'Debug',
             arch: 'x64'
@@ -116,7 +169,6 @@ export async function unityTest(cwd: string, unityPath: string) {
         console.log("[Puer] Generating wrapper");
         execUnityEditor(`-executeMethod TestBuilder.GenV1`);
         rm("-rf", `${cwd}/Library/ScriptAssemblies`);
-        cp(`${cwd}/Assets/Gen/unityenv_for_puerts.h`, `${cwd}/../../Assets/core/upm/Plugins/puerts_il2cpp/`);
         
         console.log("[Puer] Building testplayer for v1");
         mkdir("-p", `${cwd}/build/v1`)
@@ -126,13 +178,15 @@ export async function unityTest(cwd: string, unityPath: string) {
         const v1code = exec(`${cwd}/build/v1/Tester.exe -batchmode -nographics -logFile ${cwd}/log1.txt`).code;
 
         console.log("[Puer] Generating FunctionBridge");
+        writeFileSync(`${cwd}/Assets/csc.rsp`, `
+            -define:PUERTS_CPP_OUTPUT_TO_NATIVE_SRC_UPM
+            -define:EXPERIMENTAL_IL2CPP_PUERTS
+        `)
         execUnityEditor(`-executeMethod TestBuilder.GenV2`);
         rm("-rf", `${cwd}/Library/ScriptAssemblies`);
-        cp(`${cwd}/Assets/Gen/FunctionBridge.Gen.h`, `${cwd}/../../native_src_il2cpp/Src/`);
-        cp(`${cwd}/Assets/Gen/unityenv_for_puerts.h`, `${cwd}/../../Assets/core/upm/Plugins/puerts_il2cpp/`);
     
         await runPuertsMake(join(cwd, '../../native_src_il2cpp'), {
-            backend: 'v8_9.4',
+            backend: 'nodejs_16',
             platform: 'win',
             config: 'Debug',
             arch: 'x64'

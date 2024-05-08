@@ -6,7 +6,101 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 you can get the english version change log at [Github Release](https://github.com/Tencent/puerts/releases)
 
-## [2.0.0-pre.0] - 2023-02-27
+## [2.0.4] - 2024-01-09
+1. 修复：调用extension方法并且方法带out或者ref参数会报错
+2. 修复：将JSObject赋值为null会报错
+3. 修复：调用带默认参数的extension函数时index读取不正确的bug
+4. 修复：xil2cpp下，值类型无参构造字段为随机值的问题
+
+## [2.0.3] - 2023-11-02
+1. 重要：遵循Assetstore策略，生成菜单由PuerTS改到了Tools/PuerTS内
+2. 功能：支持dynamic import（即`import()`）#1540
+3. 修复：权限控制的一些bug #1512
+4. 修复：dts生成时关于interface的一些问题 #1541
+5. 修复：返回DateTime类型的函数dts错误的问题 #1565
+6. 修复：xil2cpp模式下对带params构造函数调用出错的问题 #1519
+7. 修复：xil2cpp模式下适配Thread::GetThreadStaticDataForThread参数变更 #1503
+8. 修复：xil2cpp模式下某些类生成出错的问题 #1520
+9. 修复：xil2cpp模式下调用结构体无参构造函数时导致的内存问题 #1563
+
+## [2.0.2] - 2023-09-07
+1. 修复：静态wrapper里params参数获取到的默认值不正确的问题 @ctxdegithub
+2. 修复：使用v8_8.4版本build的问题。unity2020及以下xil2cpp模式armv7可能需要v8_8.4才能编通 #1469
+3. 优化：xi2cpp模式下安卓平台合并v8和puerts两个库
+4. 优化：mac下改为使用universal binary，不再区分两个平台（覆盖升级时请注意删除旧Plugin）@mikejurka
+5. 优化：JsEnv现在会暴露Isolate字段，获得v8::Isolate的指针 @mingxxming
+6. 优化：去掉puerts自己的SnapshotBlob.h，直接使用v8内置的
+7. 优化：构建脚本现在可以运行在低版本node上 @xiezheng-XD #1495
+8. 优化：Linux平台自带inspector @geequlim
+
+## [2.0.1] - 2023-08-16
+1. 修复：内部类型在link.xml中声明不正确的问题 #1460
+2. 修复：xil2cpp模式下使用结构体out参数可能导致crash的问题 #1460
+3. 修复：xil2cpp模式下扩展函数获取默认参数不正确的问题 #1456
+4. 修复：JSObject没有正确调用回收的问题
+
+## [2.0.0] - 2023-07-31
+1. 修复：debugpath失效并导致VSCode调试不可用的问题
+2. 修复：xil2cpp模式下`puer.$genericMethod`无法获取父类泛型函数的问题 #1417 @danij91
+3. 修复：生成代码时报GetFriendlyName is not a function的问题 #1437
+
+这个版本是2.0第一个正式版本。感谢所有参与过2.0内测的朋友。
+
+对升级有疑问的朋友可以参见[升级指南](https://puerts.github.io/docs/puerts/unity/other/upgrade)
+
+## [2.0.0-rc.1] - 2023-07-14
+1. 修复: BlittableCopy不可用的问题 #1427
+2. 修复: 两个wrapper生成的问题 #1433 #1432
+
+## [2.0.0-rc.0] - 2023-06-30
+1. 修复：xil2cpp模式下结构体默认无参构造函数不可用的问题 #1301
+2. 修复：运算符重载不可用的问题 #1399
+3. 修复：已生成wrapper时点击生成报GetFriendlyName不存在的问题
+3. 修复：BlittableCopy类构造函数不生效的问题
+4. 优化：isESM检测优化 #1391
+
+## [2.0.0-pre.5] - 2023-06-15
+1. 修复：生成带op_explicit的类的时候会出现报错 #1363
+2. 修复：ClearModuleCache导致crash的问题 #1364
+3. 修复：xil2cpp模式下结构体通过指针的方式产生递归定义时生成报错的问题 #1365
+4. 修复：xil2cpp模式下打印结构体时crash的问题 #1376
+5. 修复：向数字类型的C# Field/Prop赋值JSObject时crash的问题 #1383
+6. 修复：Filter过滤失效的问题
+7. 优化：xil2cpp的c plugin代码改成生成出来，而不是包内自带。
+8. 优化：添加FAQHelper，用于优化代码生成和build时的错误提示
+9. 优化：反射调用时错误信息优化，兼容接口被裁剪的情况
+10. 优化：console.log各个元素的分隔符由逗号变为空格
+11. 优化：Node.js事件循环优化 #1093 #1279
+12. 优化：屏蔽了DefaultMode StaticWrapper报的警告
+13. 功能：添加`JSObject.Get<T>(string)`，ExecuteModule也重构改为使用该Get接口
+14. 功能：添加了一种新的Filter用于过滤xil2cpp模式的结构体类型声明
+
+## [2.0.0-pre.4] - 2023-05-29
+1. 修复：从JS往C#抛错时可能出现非法字符。
+2. 修复：注释文档生成的两个问题 #1322 #1329
+3. 修复：如果一个C#对象的构造函数抛错，可能导致后续有对象莫名其妙变为null
+4. 优化：WebGL下的性能优化
+5. 修复: 生成继承于IEnumerable的类在dts下报错 #1322
+6. 为了更好区分`Unity本身的Il2cpp backend`和我们在2.0版本新做的`puerts il2cpp特别优化模式`，我们将我们2.0的新模式命名为`xIl2cpp mode`
+7. 修复：在xIl2cpp模式下，在C#侧创建ArrayBuffer可能导致它的内存被改写。#1340
+8. 修复：在xIl2cpp模式下，在一个返回值为System.Object的函数里返回结构体会导致crash。
+9. 修复：在xIl2cpp模式下，传递nullable valuetype会导致crash。 #1320
+10. 修复：在xIl2cpp模式下，往ref/out参数设置valuetype会导致crash。 #1343
+11. 类注册逻辑重构: #1317。现在我们拥有了全新的权限控制能力，修复了一些xil2cpp模式下的相关问题。
+
+## [2.0.0-pre.3] - 2023-04-19
+1. 修复：openupm版本ios Node.js无法启动的问题 #1302
+1. 修复：DTS生成时DontBinding方法的依赖依旧被生成的问题 #1295
+1. 修复：wrapper生成时某些property只有setter时报错的问题 #1298
+1. 修复：il2cpp绑定模式下，static field的若干问题 #1288
+1. 修复：il2cpp绑定模式+Unity2021 反射调用结构体时的crash问题 #1288
+1. 修复：link.xml生成后，il2cpp绑定模式下依然无法找到泛型类的问题 #1288
+1. 功能：添加C# Enumerable在JS侧的forof支持 #1234
+2. 功能：重构旧版ExecuteModule的实现，使之与il2cpp绑定模式下一致。同时不再支持import 'csharp'和 import 'puerts'，建议使用全局变量。
+3. 功能：添加`IResolvableLoader`，用于实现node_modules加载与解决 #1270 问题
+4. 功能：添加`IBuiltinLoadedListener`，可以让Loader在内置脚本执行完毕后做一些操作，便于封装第三方Loader。
+
+## [2.0.0-pre.1] - 2023-02-27
 1. 添加了新的il2cpp binding方式，性能有飞跃式提升。详见官方文档`Il2cpp绑定`章节
 2. 本仓库的Unity代码变为了UPM目录结构。
 3. 将[commonjs-support](https://github.com/puerts/puerts-commonjs)包移入了本仓库。
@@ -17,6 +111,21 @@ you can get the english version change log at [Github Release](https://github.co
 3. 反射模式下，如果一个函数无重载也无默认参数，不会进行参数检查
 4. Ref所使用的下标由['value']变为[0]（如果你代码使用的是puer.$ref和puer.$unref，而不是直接使用下标的话，不受影响）
 5. 1.4版本中预告过的：2.0版本不自带require
+
+## [1.4.1] - 2023-03-02
+
+> 以下为相比1.4.0的内容
+
+1. 修复：出现stack overflow错误后JsEnv析构产生crash的问题 #1208
+2. 修复：Node.js版本连接inspector时打不出Log #1201
+3. 修复：ESM模块报错时报错信息包含换行符会导致报错信息不正确。#1188
+4. 修复：生成时Obsolete字段未被过滤的问题。 #1152
+5. 修复：将JS数字传递给C# object时，浮点数精度丢失的问题。
+6. 功能：JsEnv.ClearModuleCache现在可以清理ESM模块缓存
+7. 功能：JSObject现在可以接收一个JS函数。#1143 #1144
+8. 功能：添加PUERTS_DISABLE_SLOWBINDING，适用于需要做权限控制的地方。
+9. 功能：添加EXPERIMENTAL_PUERTS_DISABLE_SLOWBINDING，适用于需要做权限控制的地方。该功能为试验功能，还可能改动。
+10. 优化：销毁JSFunction、JSObject时不加锁
 
 ## [1.4.1-pre.2] - 2023-02-09
 1. 修复：Node.js版本连接inspector时打不出Log #1201

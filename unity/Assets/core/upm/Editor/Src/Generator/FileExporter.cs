@@ -12,17 +12,19 @@ using System.Text;
 
 namespace Puerts.Editor
 {
-    namespace Generator {
-        public class FileExporter {
-                
+    namespace Generator
+    {
+        public class FileExporter
+        {
+
             public static Dictionary<string, List<KeyValuePair<object, int>>> configure;
             public static List<Type> genTypes;
 
             public static void ExportDTS(string saveTo, ILoader loader = null, bool csharpModuleWillGen = false)
             {
-                if (Utils.filters == null)
+                if (!Utils.HasFilter)
                 {
-                    Utils.filters = Configure.GetFilters();
+                    Utils.SetFilters(Configure.GetFilters());
                     configure = Configure.GetConfigureByTags(new List<string>() {
                         "Puerts.BindingAttribute",
                         "Puerts.BlittableCopyAttribute",
@@ -42,6 +44,7 @@ namespace Puerts.Editor
                     .Cast<Type>()
                     .Where(t => !t.IsGenericTypeDefinition)
                     .Concat(genTypes)
+                    .Concat(new Type[] { typeof(System.Type) }) // System.Type will be use in puerts.d.ts, so always generate it 
                     .Distinct();
 
                 if (loader == null)
@@ -60,15 +63,15 @@ namespace Puerts.Editor
                     }
                 }
 
-                Utils.filters = null;
+                Utils.SetFilters(null);
             }
 
 
             public static void ExportWrapper(string saveTo, ILoader loader = null)
             {
-                if (Utils.filters == null)
+                if (!Utils.HasFilter)
                 {
-                    Utils.filters = Configure.GetFilters();
+                    Utils.SetFilters(Configure.GetFilters());
 
                     configure = Configure.GetConfigureByTags(new List<string>() {
                         "Puerts.BindingAttribute",
@@ -123,8 +126,7 @@ namespace Puerts.Editor
                             continue;
                         }
                         while (makeFileUniqueMap.ContainsKey(filePath.ToLower()))
-                        {                            
-                            // ���ڴ�Сд�ظ����������һ��idȥ��
+                        {
                             filePath = saveTo + staticWrapperInfo.WrapClassName + "_" + uniqueId + ".cs";
                             uniqueId++;
                         }
@@ -138,53 +140,61 @@ namespace Puerts.Editor
                         }
                     }
 
-                    var autoRegisterRender = jsEnv.ExecuteModule<Func<Type[], Wrapper.StaticWrapperInfo[], string>>("puerts/templates/wrapper-reg.tpl.mjs", "default");
-                    using (StreamWriter textWriter = new StreamWriter(saveTo + "AutoStaticCodeRegister.cs", false, Encoding.UTF8))
-                    {
-                        string fileContent = autoRegisterRender(wrapperInfoMap.Keys.ToArray(), wrapperInfoMap.Values.ToArray());
-                        textWriter.Write(fileContent);
-                        textWriter.Flush();
-                    }
+                    // var autoRegisterRender = jsEnv.ExecuteModule<Func<Type[], Wrapper.StaticWrapperInfo[], string>>("puerts/templates/wrapper-reg.tpl.mjs", "default");
+                    // using (StreamWriter textWriter = new StreamWriter(saveTo + "AutoStaticCodeRegister.cs", false, Encoding.UTF8))
+                    // {
+                    //     string fileContent = autoRegisterRender(wrapperInfoMap.Keys.ToArray(), wrapperInfoMap.Values.ToArray());
+                    //     textWriter.Write(fileContent);
+                    //     textWriter.Flush();
+                    // }
                 }
 
-                Utils.filters = null;
+                Utils.SetFilters(null);
             }
             
-            public static void GenMarcoHeader(string outDir, bool forceIl2Cpp) 
+            public static void GenRegisterInfo(string outDir, ILoader loader = null)
             {
-                var filePath = outDir + "unityenv_for_puerts.h";
-                string fileContent = "";
-                
-#if !UNITY_2021_1_OR_NEWER
-            if (false)
-#endif
-            {
-                fileContent += @"
-#ifndef UNITY_2021_1_OR_NEWER
-    #define UNITY_2021_1_OR_NEWER
-#endif";
-            }
+                var configure = Puerts.Configure.GetConfigureByTags(new List<string>() {
+                        "Puerts.BindingAttribute",
+                        "Puerts.BlittableCopyAttribute",
+                    });
+                var genTypes = configure["Puerts.BindingAttribute"].Select(kv => kv.Key)
+                    .Where(o => o is Type)
+                    .Cast<Type>()
+                    .Where(t => !t.IsGenericTypeDefinition && !t.Name.StartsWith("<"))
+                    .Distinct()
+                    .ToList();
 
-#if UNITY_ANDROID || UNITY_IPHONE
-            if (false)
-#endif
-            {
-                fileContent += @"
-#ifndef PUERTS_SHARED
-    #define PUERTS_SHARED
-#endif";
-            }
+                var blittableCopyTypes = new HashSet<Type>(configure["Puerts.BlittableCopyAttribute"].Select(kv => kv.Key)
+                    .Where(o => o is Type)
+                    .Cast<Type>()
+                    .Where(t => !t.IsPrimitive && Utils.isBlittableType(t))
+                    .Distinct());
 
-                if (forceIl2Cpp) fileContent += @"
-#ifndef EXPERIMENTAL_IL2CPP_PUERTS
-    #define EXPERIMENTAL_IL2CPP_PUERTS
-#endif";
-                using (StreamWriter textWriter = new StreamWriter(filePath, false, Encoding.UTF8))
+                if (!Utils.HasFilter)
                 {
-                    textWriter.Write(fileContent);
-                    textWriter.Flush();
+                    Utils.SetFilters(Configure.GetFilters());
+                }
+                
+                var RegisterInfos = RegisterInfoGenerator.GetRegisterInfos(genTypes, blittableCopyTypes);
+
+                if (loader == null)
+                {
+                    loader = new DefaultLoader();
+                }
+                using (var jsEnv = new JsEnv(loader))
+                {
+                    var registerInfoRender = jsEnv.ExecuteModule<Func<List<RegisterInfoForGenerate>, string>>("puerts/templates/registerinfo.tpl.mjs", "default");
+                    string registerInfoContent = registerInfoRender(RegisterInfos);
+                    var registerInfoPath = outDir + "RegisterInfo_Gen.cs";
+                    using (StreamWriter textWriter = new StreamWriter(registerInfoPath, false, Encoding.UTF8))
+                    {
+                        textWriter.Write(registerInfoContent);
+                        textWriter.Flush();
+                    }
                 }
             }
         }
     }
+
 }

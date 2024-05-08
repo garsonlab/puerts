@@ -5,14 +5,16 @@
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
 
+#if UNITY_2020_1_OR_NEWER
 #if EXPERIMENTAL_IL2CPP_PUERTS && ENABLE_IL2CPP
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 #if CSHARP_7_3_OR_NEWER
 using System.Threading.Tasks;
 #endif
-
+using Puerts.TypeMapping;
 
 namespace Puerts
 {
@@ -22,6 +24,8 @@ namespace Puerts
         IntPtr nativeJsEnv;
         IntPtr nativePesapiEnv;
 
+        // TypeRegister TypeRegister;
+
         Type persistentObjectInfoType;
         MethodInfo objectPoolAddMethodInfo;
         MethodInfo objectPoolRemoveMethodInfo;
@@ -29,8 +33,7 @@ namespace Puerts
 
         PuertsIl2cpp.ObjectPool objectPool = new PuertsIl2cpp.ObjectPool();
 
-        private Func<string, JSObject> moduleExecuter;
-        private delegate T JSOGetter<T>(JSObject jso, string s);
+        private Func<string, JSObject> moduleExecutor;
 
         ILoader loader;
 
@@ -50,16 +53,23 @@ namespace Puerts
             return loader;
         }
 
+        public IntPtr Isolate {
+            get {
+                return PuertsIl2cpp.NativeAPI.GetIsolate(nativeJsEnv);
+            }
+        }
+
         public JsEnv(): this(new DefaultLoader(), -1) {}
 
         public JsEnv(ILoader loader, int debugPort = -1)
         {
             this.loader = loader;
+
             //only once is enough
             PuertsIl2cpp.NativeAPI.SetLogCallback(PuertsIl2cpp.NativeAPI.Log);
             PuertsIl2cpp.NativeAPI.InitialPuerts(PuertsIl2cpp.NativeAPI.GetPesapiImpl());
             PuertsIl2cpp.NativeAPI.ExchangeAPI(PuertsIl2cpp.NativeAPI.GetUnityExports());
-            tryLoadTypeMethodInfo = typeof(PuertsIl2cpp.NativeAPI).GetMethod("RegisterNoThrow");
+            tryLoadTypeMethodInfo = typeof(TypeRegister).GetMethod("RegisterNoThrow");
             PuertsIl2cpp.NativeAPI.SetTryLoadCallback(PuertsIl2cpp.NativeAPI.GetMethodInfoPointer(tryLoadTypeMethodInfo), PuertsIl2cpp.NativeAPI.GetMethodPointer(tryLoadTypeMethodInfo));
 
             persistentObjectInfoType = typeof(Puerts.JSObject);
@@ -79,24 +89,24 @@ namespace Puerts
 
             PuertsIl2cpp.NativeAPI.SetObjectToGlobal(nativeJsEnv, "jsEnv", PuertsIl2cpp.NativeAPI.GetObjectPointer(this));
 
-            Eval(@"
-                var global = this;
-                (function() {
-                    var loader = jsEnv.GetLoader();
-                    global.__puerts_resolve_module_content__ = function(specifier) {
-                        const debugpathRef = [], contentRef = [];
-                        const originSp = specifier;
-                        
-                        if (loader.FileExists(specifier)) {
-                            return loader.ReadFile(specifier, debugpathRef);
-                        } else {
-                            throw new Error(`module not found in js: ${originSp}`);
-                        }
-                    }
-                })();
-            ");
-            
-            moduleExecuter = Eval<Func<string, JSObject>>("__puer_execute_module_sync__");
+            //可以DISABLE掉自动注册，通过手动调用PuertsStaticWrap.AutoStaticCodeRegister.Register(jsEnv)来注册
+#if !DISABLE_AUTO_REGISTER
+            const string AutoStaticCodeRegisterClassName = "PuertsStaticWrap.PuerRegisterInfo_Gen";
+            var autoRegister = Type.GetType(AutoStaticCodeRegisterClassName, false);
+            if (autoRegister == null)
+            {
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    autoRegister = assembly.GetType(AutoStaticCodeRegisterClassName, false);
+                    if (autoRegister != null) break;
+                }
+            }
+            if (autoRegister != null)
+            {
+                var methodInfoOfRegister = autoRegister.GetMethod("AddRegisterInfoGetterIntoJsEnv");
+                methodInfoOfRegister.Invoke(null, new object[] { this });
+            }
+#endif
 
             if (PuertsIl2cpp.NativeAPI.GetLibBackend() == 0) 
                 Backend = new BackendV8(this);
@@ -119,6 +129,24 @@ namespace Puerts
             ExecuteModule("puerts/promises.mjs");
 
             this.debugPort = debugPort;
+            if (loader is IBuiltinLoadedListener)
+                (loader as IBuiltinLoadedListener).OnBuiltinLoaded(this);
+        }
+
+        public void AddRegisterInfoGetter(Type type, Func<RegisterInfo> getter)
+        {
+#if THREAD_SAFE
+            lock (this)
+            {
+#endif
+            TypeRegister.AddRegisterInfoGetter(type, getter);
+#if THREAD_SAFE
+            }
+#endif
+        }
+        public void SetDefaultBindingMode(BindingMode bindingMode)
+        {
+            TypeRegister.RegisterInfoManager.DefaultBindingMode = bindingMode;
         }
 
         [UnityEngine.Scripting.Preserve]
@@ -129,26 +157,28 @@ namespace Puerts
 
         public void Eval(string chunk, string chunkName = "chunk")
         {
-            PuertsIl2cpp.NativeAPI.EvalInternal(nativePesapiEnv, System.Text.Encoding.UTF8.GetBytes(chunk), chunkName, null);
+            PuertsIl2cpp.NativeAPI.EvalInternal(nativePesapiEnv, System.Text.Encoding.UTF8.GetBytes(chunk + '\0'), chunkName, null);
         }
 
         public T Eval<T>(string chunk, string chunkName = "chunk")
         {
-            return (T)PuertsIl2cpp.NativeAPI.EvalInternal(nativePesapiEnv, System.Text.Encoding.UTF8.GetBytes(chunk), chunkName, typeof(T));
+            return (T)PuertsIl2cpp.NativeAPI.EvalInternal(nativePesapiEnv, System.Text.Encoding.UTF8.GetBytes(chunk + '\0'), chunkName, typeof(T));
         }
 
         public T ExecuteModule<T>(string specifier, string exportee)
         {
-            if (typeof(T) == typeof(JSObject)) {
-                throw new Exception("T must not be Puerts.JSObject. use ExecuteModule without generic please");
+            if (exportee == "" && typeof(T) != typeof(JSObject)) {
+                throw new Exception("T must be Puerts.JSObject when getting the module namespace");
             }
-            JSObject jso = moduleExecuter(specifier);
-            JSOGetter<T> getter = Eval<JSOGetter<T>>("(function (jso, str) { return jso[str]; });");
-            return getter(jso, exportee);
+            if (moduleExecutor == null) moduleExecutor = PuertsIl2cpp.NativeAPI.GetModuleExecutor(nativePesapiEnv, typeof(Func<string, JSObject>));
+            JSObject jso = moduleExecutor(specifier);
+            
+            return jso.Get<T>(exportee);
         }
         public JSObject ExecuteModule(string specifier)
         {
-            return moduleExecuter(specifier);
+            if (moduleExecutor == null) moduleExecutor = PuertsIl2cpp.NativeAPI.GetModuleExecutor(nativePesapiEnv, typeof(Func<string, JSObject>));
+            return moduleExecutor(specifier);
         }
 
         public Action TickHandler;
@@ -217,4 +247,5 @@ namespace Puerts
     }
 }
 
+#endif
 #endif
