@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -28,20 +28,24 @@
 #include "UObject/WeakFieldPtr.h"
 #endif
 
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #pragma warning(push, 0)
 #include "libplatform/libplatform.h"
 #include "v8.h"
 #pragma warning(pop)
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 
 #include "NamespaceDef.h"
 
 #include "V8InspectorImpl.h"
 
 #if defined(WITH_NODEJS)
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #pragma warning(push, 0)
 #include "node.h"
 #include "uv.h"
 #pragma warning(pop)
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #endif
 
 #if USE_WASM3
@@ -82,8 +86,7 @@ public:
 
     virtual ~FJsEnvImpl() override;
 
-    virtual void Start(
-        const FString& ModuleNameOrScript, const TArray<TPair<FString, UObject*>>& Arguments, bool IsScript) override;
+    virtual void Start(const FString& ModuleNameOrScript, const TArray<TPair<FString, UObject*>>& Arguments) override;
 
     virtual bool IdleNotificationDeadline(double DeadlineInSeconds) override;
 
@@ -126,7 +129,7 @@ public:
 
     virtual void ReloadModule(FName ModuleName, const FString& JsSource) override;
 
-    virtual void ReloadSource(const FString& Path, const std::string& JsSource) override;
+    virtual void ReloadSource(const FString& Path, const PString& JsSource) override;
 
     std::function<void(const FString&)> OnSourceLoadedCallback;
 
@@ -154,13 +157,19 @@ public:
 
     virtual void UnBindStruct(FScriptStructWrapper* ScriptStructWrapper, void* Ptr) override;
 
-    virtual void UnBindCppObject(JSClassDefinition* ClassDefinition, void* Ptr) override;
+    virtual void UnBindCppObject(v8::Isolate* Isolate, JSClassDefinition* ClassDefinition, void* Ptr) override;
 
     virtual v8::Local<v8::Value> FindOrAddStruct(
         v8::Isolate* Isolate, v8::Local<v8::Context>& Context, UScriptStruct* ScriptStruct, void* Ptr, bool PassByPointer) override;
 
     virtual void BindCppObject(v8::Isolate* InIsolate, JSClassDefinition* ClassDefinition, void* Ptr,
         v8::Local<v8::Object> JSObject, bool PassByPointer) override;
+
+    virtual void* GetPrivateData(v8::Local<v8::Context> Context, v8::Local<v8::Object> JSObject) override;
+
+    virtual void SetPrivateData(v8::Local<v8::Context> Context, v8::Local<v8::Object> JSObject, void* Ptr) override;
+
+    virtual v8::MaybeLocal<v8::Function> LoadTypeById(v8::Local<v8::Context> Context, const void* TypeId) override;
 
     virtual v8::Local<v8::Value> FindOrAddCppObject(
         v8::Isolate* Isolate, v8::Local<v8::Context>& Context, const void* TypeId, void* Ptr, bool PassByPointer) override;
@@ -176,7 +185,7 @@ public:
     };
 
     void BindContainer(void* Ptr, v8::Local<v8::Object> JSObject, void (*Callback)(const v8::WeakCallbackInfo<void>& data),
-        bool PassByPointer, ContainerType Type);
+        bool PassByPointer, ContainerType Type, PropertyMacro* KeyProperty, PropertyMacro* ValueProperty);
 
     virtual void UnBindContainer(void* Ptr) override;
 
@@ -350,8 +359,11 @@ private:
 
     std::unordered_multimap<int, FModuleInfo*>::iterator FindModuleInfo(v8::Local<v8::Module> Module);
 
-    static v8::MaybeLocal<v8::Module> ResolveModuleCallback(
-        v8::Local<v8::Context> Context, v8::Local<v8::String> Specifier, v8::Local<v8::Module> Referrer);
+    static v8::MaybeLocal<v8::Module> ResolveModuleCallback(v8::Local<v8::Context> Context, v8::Local<v8::String> Specifier,
+#if V8_MAJOR_VERSION >= 9
+        v8::Local<v8::FixedArray> ImportAttributes,    // not implement yet
+#endif
+        v8::Local<v8::Module> Referrer);
 #endif
 
     struct ObjectMerger;
@@ -360,7 +372,7 @@ private:
 
     struct ObjectMerger
     {
-        std::map<std::string, std::unique_ptr<FPropertyTranslator>> Fields;
+        std::map<PString, std::unique_ptr<FPropertyTranslator>> Fields;
         UStruct* Struct;
         FJsEnvImpl* Parent;
 
@@ -551,6 +563,10 @@ private:
 
     v8::Global<v8::Function> GenListApply;
 
+#if defined(WITH_V8_BYTECODE)
+    v8::Global<v8::Function> GenEmptyCode;
+#endif
+
     TMap<UStruct*, FTemplateInfo> TypeToTemplateInfoMap;
 
     TMap<FString, std::shared_ptr<FStructWrapper>> TypeReflectionMap;
@@ -564,6 +580,8 @@ private:
         v8::UniquePersistent<v8::Value> Container;
         bool NeedRelease;
         ContainerType Type;
+        PropertyMacro* KeyProperty;
+        PropertyMacro* ValueProperty;
     };
 
     TMap<void*, ContainerCacheItem> ContainerCache;
@@ -740,6 +758,12 @@ private:
                 .Check();
         }
     };
+#if defined(WITH_V8_BYTECODE)
+    uint32_t Expect_FlagHash = 0;
+#if V8_MAJOR_VERSION >= 11
+    uint32_t Expect_ReadOnlySnapshotChecksum = 0;
+#endif
+#endif
 };
 
 }    // namespace PUERTS_NAMESPACE

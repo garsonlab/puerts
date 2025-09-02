@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms. 
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -13,9 +13,6 @@ public class PuertsEditor : ModuleRules
 {
     public PuertsEditor(ReadOnlyTargetRules Target) : base(Target) 
     {
-#if UE_5_3_OR_LATER
-        PCHUsage = PCHUsageMode.NoPCHs;
-#endif
         PublicDependencyModuleNames.AddRange(
             new string[]
             {
@@ -45,7 +42,5 @@ public class PuertsEditor : ModuleRules
             PrivateDependencyModuleNames.Add("SourceControl");
             PublicDefinitions.Add("PUERTS_WITH_SOURCE_CONTROL");
         }
-        
-        bEnableUndefinedIdentifierWarnings = false; // 避免在VS 2017编译时出现C4668错误
     }
 }

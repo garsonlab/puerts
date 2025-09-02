@@ -6,6 +6,73 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 you can get the english version change log at [Github Release](https://github.com/Tencent/puerts/releases)
 
+## [2.2.2] - 2025-05-13
+1. Fixed the issue where the WebGL build tool would repeatedly execute npm install on Windows.
+2. Added support for One-Click Export for WeChat Mini Games.
+3. Resolved the "token overflowed internal buffer" compilation error, added DisallowedType checks, and fixed cases where wrappers referenced undeclared value types (fixes #2039).
+4. Prevented exceptions caused by missing eval in WebGL environments from being directly thrown in JS, which could halt the program.
+5. Removed the restriction requiring Puerts.WebGL.MainEnv.Get to create JsEnv in WebGL builds.
+6. Added support for Unity's "Faster (smaller) builds" option (equivalent to WeChat export tool's "il2cpp optimize size") (#2046).
+7. Fixed errors when accessing C# in native setTimeout callbacks under WebGL.
+8. Optimized memory usage by removing storage of class/field names and storing method names as const char* pointers instead.
+
+## [2.2.1] - 2025-04-25
+1. Added WebGL support for il2cpp optimization (enabled by default)
+2. WebGL build now automatically packages JS resources via PostBuild and modifies index.html
+3. WebGL Editor removed Node.js backend dependency
+4. Improved string transmission performance using UTF-16 encoding in il2cpp optimizations
+5. Fixed parameter passing inconsistencies with previous il2cpp optimization versions
+6. Resolved infinite loop in generic type self-referential code generation (filtered all generic classes in previous commit), fix #2015
+7. Fixed JS function to JsObject conversion failure under il2cpp optimization, fix #2012
+
+## [2.2.0] - 2025-3-18
+1. native_src_il2cpp merged into native_src
+2. il2cpp optimization feature no longer requires static library linking on Android (unsupported by some Unity versions)
+3. il2cpp-generated wrapper code no longer needs to be separately compiled into plugins
+4. il2cpp supports zero-GC reflection
+5. QuickJS backend and Mult backend now support il2cpp optimization
+6. Simplified compilation for QuickJS backend and Mult backend by directly integrating quick-ng source code compilation
+7. Fixed compound type ref passing from C# to JS in il2cpp optimization, resolving #1886
+8. Enabled il2cpp optimization by default for all platforms except iOS and WebGL during il2cpp packaging
+
+## [2.1.1] - 2024-10-25
+1. Disable JIT on the HarmonyOS platform.
+2. Compatibility with higher versions of V8.
+3. Upgrade QuickJS to the latest version.
+4. V8 backend, add WebSocket support to QuickJS.
+5. Add support for lazy loading and automatic unloading in the CJS implementation.
+6. Resolve the issue of incomplete locking in V8 when defining the THREAD_SAFE macro in the plugin.
+7. Add compilation support for NS (Nintendo Switch).
+8. Fix memory leak in clearModuleCache.
+9. Use the trimmed version by default on Android.
+
+## [2.1.0] - 2024-06-25
+1. Feature: Support for specifying whether the Backend is V8 or quickjs through JsEnv parameters.
+2. Fix: Unity crashes when there are syntax errors in the loaded module during the execution of ExecuteModule in C#.
+3. Feature: Allow puer.getLastException to retrieve errors from ExecuteModule (#1686).
+4. Optimization: Refactor quickjs's esm to prevent the mixed use of quickjs api and v8 api in the same function, improving the previous situation where esm was heavily dependent on a certain version of quickjs backend, which prevented the upgrade of quickjs backend. Also, upgrade quickjs backend.
+5. Fix: Issue of not finding symbols in the nodejs backend under Linux.
+6. Fix: Issue of failing to load empty module files, fix #1700.
+7. Optimization: Correct the gc issue of value type parameters, fix #1527.
+8. Fix: Resolve the String leaks in the quickjs version.
+9. Feature: Support for HarmonyOS compilation.
+10. Fix: Encoding.UTF8.GetBytes returns bytes without a 0 at the end, which needs to be added manually, otherwise it will crash under AOT, fix #1691.
+11. Feature: Record js stack when creating GenericDelegate in the editor, attach the stack when CheckLiveness fails for easy positioning (#1704).
+12. Feature: Enable debugger support by default during debug builds (#1707).
+13. Feature: Added support for v8 10.6.194.
+14. Fix: Avoid properties with the same key in FunctionTemplate, fix #1714.
+15. Optimization: console.log should output through Console.Error in non-unity environments.
+16. Optimization: Refactor v8 esm implementation, support top-level-await.
+17. Feature: Add v8.getHeapStatistics, v8.getHeapSpaceStatistics.
+18. Optimization: Do not allow the new operator to be used on static functions.
+19. Fix: Support for Explicit Interface Implementation, fix #1741.
+20. Fix: quickjs backend js throw null/undefined will cause a crash, fix #1747.
+21. Optimization: Remove the value field in $Ref<T>, fix #1752.
+22. Optimization: Increment CtxGroupID for debugging each time (previously a fixed ID might have multiple JsEnv, single JsEnv multiple inspectors might have problems).
+
+## [2.0.5] - 2024-05-07
+1. fix: compat with zombieyang/puerts_unity_webgl_demo#53
+
 ## [2.0.4] - 2024-01-09
 1. fix: the error when invoking extension method with out/ref args.
 2. fix: the error when set a JSObject to `null`.

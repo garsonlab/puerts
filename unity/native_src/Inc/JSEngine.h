@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -21,6 +21,16 @@
 #ifdef MULT_BACKENDS
 #include "IPuertsPlugin.h"
 #endif
+#ifdef WITH_IL2CPP_OPTIMIZATION
+#include "pesapi.h"
+#ifdef WITH_QUICKJS
+#include "CppObjectMapperQuickjs.h"
+#endif
+#ifdef WITH_V8
+#include "CppObjectMapper.h"
+#include "DataTransfer.h"
+#endif
+#endif
 
 #if WITH_NODEJS
 #pragma warning(push, 0)
@@ -38,10 +48,14 @@ typedef char* (*CSharpModuleResolveCallback)(const char* identifer, int32_t jsEn
 typedef void(*CSharpFunctionCallback)(puerts::IPuertsPlugin* plugin, const v8::FunctionCallbackInfo<v8::Value>& Info, void* Self, int ParamLen, int64_t UserData);
 
 typedef void* (*CSharpConstructorCallback)(puerts::IPuertsPlugin* plugin, const v8::FunctionCallbackInfo<v8::Value>& Info, int ParamLen, int64_t UserData);
+
+typedef void (*JsFunctionFinalizeCallback)(puerts::IPuertsPlugin* plugin, int64_t UserData);
 #else
 typedef void(*CSharpFunctionCallback)(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, void* Self, int ParamLen, int64_t UserData);
 
 typedef void* (*CSharpConstructorCallback)(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, int ParamLen, int64_t UserData);
+
+typedef void (*JsFunctionFinalizeCallback)(v8::Isolate* Isolate, int64_t UserData);
 #endif
 
 typedef void(*CSharpDestructorCallback)(void* Self, int64_t UserData);
@@ -52,6 +66,16 @@ struct FCallbackInfo
     bool IsStatic;
     CSharpFunctionCallback Callback;
     int64_t Data;
+};
+
+struct FCallbackInfoWithFinalize : public FCallbackInfo
+{
+    FCallbackInfoWithFinalize(bool InIsStatic, CSharpFunctionCallback InCallback, int64_t InData, JsFunctionFinalizeCallback InFinalize, class JSEngine* InJSE)
+       : FCallbackInfo(InIsStatic, InCallback, InData), Finalize(InFinalize), JSE(InJSE)
+    {}
+    JsFunctionFinalizeCallback Finalize;
+    class JSEngine* JSE;
+    v8::Global<v8::Function> JsFunction;
 };
 
 struct FLifeCycleInfo
@@ -72,6 +96,7 @@ enum JSEngineBackend
     V8          = 0,
     Node        = 1,
     QuickJS     = 2,
+    Auto = 3
 };
 
 class JSEngine
@@ -137,6 +162,15 @@ public:
     bool InspectorTick();
 
     void LogicTick();
+    
+    void TerminateExecution()
+    {
+#if !WITH_QUICKJS
+        MainIsolate->TerminateExecution();
+#endif
+    }
+    
+    static void CallbackDataGarbageCollected(const v8::WeakCallbackInfo<FCallbackInfoWithFinalize>& Data);
 
     v8::Isolate* MainIsolate;
 
@@ -159,6 +193,8 @@ public:
     
 private:
     std::vector<FCallbackInfo*> CallbackInfos;
+    
+    std::vector<FCallbackInfoWithFinalize*> CallbackWithFinalizeInfos;
 
     std::vector<FLifeCycleInfo*> LifeCycleInfos;
 
@@ -184,12 +220,23 @@ private:
 
     JSFunction* ModuleExecutor = nullptr;
     
+#ifdef WITH_IL2CPP_OPTIMIZATION
+#ifdef WITH_QUICKJS
+    pesapi::qjsimpl::CppObjectMapper CppObjectMapperQjs;
+#endif
+#ifdef WITH_V8
+    FCppObjectMapper CppObjectMapperV8;
+#endif
+#endif
+    
 public:
     JSFunction* JSObjectValueGetter = nullptr;
 
     JSFunction* GetModuleExecutor();
 
     v8::Local<v8::FunctionTemplate> ToTemplate(v8::Isolate* Isolate, bool IsStatic, CSharpFunctionCallback Callback, int64_t Data);
+    
+    v8::MaybeLocal<v8::Function> CreateFunction(CSharpFunctionCallback Callback, JsFunctionFinalizeCallback Finalize, int64_t Data);
 
     std::string GetJSStackTrace();
 };

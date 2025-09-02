@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms. 
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -14,6 +14,9 @@ namespace Puerts
     {
         private static char SLASH = (char)47;
         private static char DOT = (char)46;
+#if ENABLE_IL2CPP
+        [UnityEngine.Scripting.Preserve]
+#endif
         public static bool IsRelative(string filepath)
         {
             if (filepath[0] == '.') {
@@ -24,6 +27,9 @@ namespace Puerts
             }
             return false;
         }
+#if ENABLE_IL2CPP
+        [UnityEngine.Scripting.Preserve]
+#endif
         public static string Dirname(string filepath)
         {
             if (filepath.Length == 0) return ".";
@@ -173,6 +179,9 @@ namespace Puerts
             }
         }
 
+#if ENABLE_IL2CPP
+        [UnityEngine.Scripting.Preserve]
+#endif
         public static string normalize(string p)
         {
             if (p == null) throw new Exception("invalid filepath");

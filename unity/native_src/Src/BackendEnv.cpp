@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -37,6 +37,10 @@
 #define JS_INITVAL(s, t, val) s.tag = t, s.u.int32=val
 #define JS_INITPTR(s, t, p) s.tag = t, s.u.ptr = p
 #endif
+#endif
+
+#if defined(WITH_WEBSOCKET)
+void InitWebsocketPPWrap(v8::Local<v8::Context> Context);
 #endif
 
 namespace PUERTS_NAMESPACE
@@ -218,6 +222,18 @@ void FBackendEnv::GlobalPrepare()
 {
     if (!GPlatform)
     {
+        std::string Flags = "--stack_size=856";
+#if PUERTS_DEBUG
+        Flags += " --expose-gc";
+#endif
+#if defined(PLATFORM_IOS) || defined(PLATFORM_OHOS) || defined(JITLESS)
+        Flags += " --jitless --no-expose-wasm";
+#endif
+#if V8_MAJOR_VERSION <= 9
+        Flags += " --no-harmony-top-level-await";
+#endif
+        v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
+
 #if defined(WITH_NODEJS)
         int Argc = 2;
         char* ArgvIn[] = {"puerts", "--no-harmony-top-level-await"};
@@ -317,7 +333,7 @@ void FBackendEnv::Initialize(void* external_quickjs_runtime, void* external_quic
     {
         Isolate->SetPromiseRejectCallback(&PromiseRejectCallback<FBackendEnv>);
 
-#if !WITH_QUICKJS
+#if !defined(WITH_QUICKJS)
         Isolate->SetHostInitializeImportMetaObjectCallback(&esmodule::HostInitializeImportMetaObject);
         Isolate->SetHostImportModuleDynamicallyCallback(&esmodule::HostImportModuleDynamically);
 #endif
@@ -342,6 +358,11 @@ void FBackendEnv::Initialize(void* external_quickjs_runtime, void* external_quic
     JS_FreeValue(ctx, G);
 #else
     Global->Set(Context, v8::String::NewFromUtf8(Isolate, EXECUTEMODULEGLOBANAME).ToLocalChecked(), v8::FunctionTemplate::New(Isolate, esmodule::ExecuteModule)->GetFunction(Context).ToLocalChecked()).Check();
+    Global->Set(Context, v8::String::NewFromUtf8(Isolate, "v8").ToLocalChecked(), GetV8Extras(Isolate, Context));
+#endif
+
+#if defined(WITH_WEBSOCKET)
+    InitWebsocketPPWrap(Context);
 #endif
 }
 
@@ -384,6 +405,9 @@ void FBackendEnv::UnInitialize()
 void FBackendEnv::LogicTick()
 {
 #if WITH_NODEJS
+#ifdef THREAD_SAFE
+    v8::Locker Locker(MainIsolate);
+#endif
     v8::Isolate::Scope IsolateScope(MainIsolate);
     v8::HandleScope HandleScope(MainIsolate);
     auto Context = MainContext.Get(MainIsolate);
@@ -442,23 +466,43 @@ bool FBackendEnv::ClearModuleCache(v8::Isolate* Isolate, v8::Local<v8::Context> 
     if (key.size() == 0) 
     {
         PathToModuleMap.clear();
+#if !WITH_QUICKJS
+        for (auto it = ScriptIdToModuleInfo.begin(); it != ScriptIdToModuleInfo.end(); it++) {
+            delete it->second;
+        }
+        ScriptIdToModuleInfo.clear();
+#endif
         return true;
     } 
     else 
     {
+        bool found = false;
         auto finder = PathToModuleMap.find(key);
         if (finder != PathToModuleMap.end()) 
         {
-            PathToModuleMap.erase(key);
 #if !WITH_QUICKJS
-            return true;
-#else
+            auto iter = FindModuleInfo(finder->second.Get(Isolate));
+            if (iter != ScriptIdToModuleInfo.end())
+            {
+                delete iter->second;
+                ScriptIdToModuleInfo.erase(iter);
+            }
+#endif
+            PathToModuleMap.erase(key);
+            found = true;
+        }
+
+#if WITH_QUICKJS
+#ifdef THREAD_SAFE
+            v8::Locker Locker(Isolate);
+#endif
             v8::Isolate::Scope IsolateScope(Isolate);
             v8::HandleScope HandleScope(Isolate);
             JSContext* ctx = Context->context_;
-            return JS_ReleaseLoadedModule(ctx, Path);
+        found = JS_ReleaseLoadedModule(ctx, Path) || found;
 #endif
-        }
+
+        return found;
     }
     return false;
 }
@@ -524,12 +568,19 @@ JSModuleDef* FBackendEnv::LoadModule(JSContext* ctx, const char *name)
         // exception from Normalize
     //    return nullptr;
     //}
+#if defined(QUICKJS_VERSION) && QUICKJS_VERSION >= 20240214
+    if (JS_HasException(ctx))
+    {
+        return nullptr;
+    }
+#else
     auto Ex = JS_GetException(ctx);
     if (!JS_IsUndefined(Ex) && !JS_IsNull(Ex))
     {
         JS_Throw(ctx, Ex);
         return nullptr;
     }
+#endif
     // quickjs本身已经做了cache，这只是为了支持ClearModuleCache ///
     auto Iter = PathToModuleMap.find(name);
     if (Iter != PathToModuleMap.end())
@@ -718,12 +769,16 @@ v8::MaybeLocal<v8::Module> FBackendEnv::FetchModuleTree(v8::Isolate* isolate, v8
         FV8Utils::ThrowException(isolate, "source_text is not a string!");
         return v8::MaybeLocal<v8::Module>();
     }
+    v8::Local<v8::String> script_url = absolute_file_path;
+    if (pathForDebug.size() > 0 )
+    {
+        script_url = FV8Utils::V8String(isolate, pathForDebug.c_str());
+    }
 #if defined(V8_94_OR_NEWER) && !defined(WITH_QUICKJS)
-    v8::ScriptOrigin origin(isolate, absolute_file_path, 0, 0, true, -1, v8::Local<v8::Value>(), false, false, true);
+    v8::ScriptOrigin origin(isolate, script_url, 0, 0, true, -1, v8::Local<v8::Value>(), false, false, true);
 #else
-    v8::ScriptOrigin origin(absolute_file_path, v8::Integer::New(isolate, 0), v8::Integer::New(isolate, 0), v8::True(isolate),
-        v8::Local<v8::Integer>(), v8::Local<v8::Value>(), v8::False(isolate), v8::False(isolate), v8::True(isolate),
-        v8::PrimitiveArray::New(isolate, 10));
+    v8::ScriptOrigin origin(script_url, v8::Integer::New(isolate, 0), v8::Integer::New(isolate, 0), v8::True(isolate),
+        v8::Local<v8::Integer>(), v8::Local<v8::Value>(), v8::False(isolate), v8::False(isolate), v8::True(isolate));
 #endif
     v8::ScriptCompiler::Source source(source_text.As<v8::String>(), origin);
     v8::Local<v8::Module> module;
@@ -954,6 +1009,9 @@ static void DoHostImportModuleDynamically(void* import_data_)
       
     v8::Isolate* isolate(import_data->isolate);
     auto backend_env = FBackendEnv::Get(isolate);
+#ifdef THREAD_SAFE
+    v8::Locker Locker(isolate);
+#endif
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = backend_env->MainContext.Get(isolate);
     v8::Context::Scope context_scope(context);
@@ -1032,6 +1090,9 @@ v8::MaybeLocal<v8::Promise> esmodule::HostImportModuleDynamically(
     v8::Local<v8::Value> referrer_name = referrer->GetResourceName();
 #endif
     auto isolate = context->GetIsolate();
+#ifdef THREAD_SAFE
+    v8::Locker Locker(isolate);
+#endif
     v8::HandleScope handle_scope(isolate);
     v8::Context::Scope context_scope(context);
     v8::Local<v8::Promise::Resolver> resolver;
@@ -1071,6 +1132,9 @@ void esmodule::HostInitializeImportMetaObject(v8::Local<v8::Context> Context, v8
 std::string FBackendEnv::GetJSStackTrace()
 {
     v8::Isolate* Isolate = MainIsolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
     v8::HandleScope HandleScope(Isolate);
     v8::Local<v8::Context> Context = MainContext.Get(Isolate);
     v8::Context::Scope ContextScope(Context);
@@ -1099,7 +1163,77 @@ std::string FBackendEnv::GetJSStackTrace()
     JS_FreeValue(ctx, stack);
     return ret;
 #else
-    return StackTraceToString(Isolate, v8::StackTrace::CurrentStackTrace(Isolate, 10, v8::StackTrace::kDetailed));
+    return StackTraceToString(Isolate, v8::StackTrace::CurrentStackTrace(Isolate, 10, v8::StackTrace::kDetailed)).c_str();
 #endif
 }
+
+#if !defined(WITH_QUICKJS)
+
+#define SetNumericStatProperty(name)                                           \
+  target                                                                       \
+      ->Set(context,                                                           \
+            v8::String::NewFromUtf8(isolate, #name).ToLocalChecked(),          \
+            v8::Number::New(isolate, static_cast<double>(stat.name())))        \
+      .Check();
+
+void GetHeapStatistics(const v8::FunctionCallbackInfo<v8::Value>& info)
+{
+    v8::Isolate* isolate = info.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Object> target = v8::Object::New(isolate);
+    v8::HeapStatistics stat;
+    isolate->GetHeapStatistics(&stat);
+    
+    SetNumericStatProperty(total_heap_size);
+    SetNumericStatProperty(total_heap_size_executable);
+    SetNumericStatProperty(total_physical_size);
+    SetNumericStatProperty(total_available_size);
+    SetNumericStatProperty(total_global_handles_size);
+    SetNumericStatProperty(used_global_handles_size);
+    SetNumericStatProperty(used_heap_size);
+    SetNumericStatProperty(heap_size_limit);
+    SetNumericStatProperty(malloced_memory);
+    SetNumericStatProperty(external_memory);
+    SetNumericStatProperty(peak_malloced_memory);
+    SetNumericStatProperty(number_of_native_contexts);
+    SetNumericStatProperty(number_of_detached_contexts);
+    SetNumericStatProperty(does_zap_garbage);
+    
+    info.GetReturnValue().Set(target);
+}
+
+void GetHeapSpaceStatistics(const v8::FunctionCallbackInfo<v8::Value>& info)
+{
+    v8::Isolate* isolate = info.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Object> ret = v8::Object::New(isolate);
+    
+    for (size_t i = 0; i < isolate->NumberOfHeapSpaces(); i++)
+    {
+        v8::HeapSpaceStatistics stat;
+        isolate->GetHeapSpaceStatistics(&stat, i);
+        v8::Local<v8::Object> target = v8::Object::New(isolate);
+        
+        SetNumericStatProperty(space_size);
+        SetNumericStatProperty(space_used_size);
+        SetNumericStatProperty(space_available_size);
+        SetNumericStatProperty(physical_space_size);
+        
+        ret->Set(context, v8::String::NewFromUtf8(isolate, stat.space_name()).ToLocalChecked(), target).Check();
+    }
+    info.GetReturnValue().Set(ret);
+}
+
+#undef SetUIntStatProperty
+
+v8::Local<v8::Object> FBackendEnv::GetV8Extras(v8::Isolate* isolate, v8::Local<v8::Context> context)
+{
+    v8::Local<v8::Object> ret = v8::Object::New(isolate);
+    ret->Set(context, v8::String::NewFromUtf8(isolate, "getHeapStatistics").ToLocalChecked(), 
+        v8::Function::New(context, GetHeapStatistics).ToLocalChecked()).Check();
+    ret->Set(context, v8::String::NewFromUtf8(isolate, "getHeapSpaceStatistics").ToLocalChecked(), 
+        v8::Function::New(context, GetHeapSpaceStatistics).ToLocalChecked()).Check();
+    return ret;
+}
+#endif
 }

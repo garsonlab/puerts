@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -90,11 +90,18 @@ public:
     {
         if (JsEnvLifeCycleTracker.expired())
         {
+#if V8_MAJOR_VERSION < 11
+            GObject.Empty();
+            GContext.Empty();
+#endif
+        }
+        else
+        {
 #ifdef THREAD_SAFE
             v8::Locker Locker(Isolate);
 #endif
-            GObject.Empty();
-            GContext.Empty();
+            GObject.Reset();
+            GContext.Reset();
         }
     }
 
@@ -191,8 +198,13 @@ public:
     }
 
     v8::Isolate* Isolate;
+#if V8_MAJOR_VERSION >= 11
+    v8::Persistent<v8::Context> GContext;
+    v8::Persistent<v8::Object> GObject;
+#else
     v8::Global<v8::Context> GContext;
     v8::Global<v8::Object> GObject;
+#endif
 
     std::weak_ptr<int> JsEnvLifeCycleTracker;
 

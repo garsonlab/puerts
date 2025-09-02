@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -34,6 +34,7 @@ declare module "ue" {
     }
     
     interface TArray<T> {
+        [index: number]: never;
         Num(): number;
         Add(...args: T[]): void;
         Get(Index: number): T;
@@ -85,30 +86,32 @@ declare module "ue" {
     type BuiltinByte = 1;
     type BuiltinInt = 2;
     type BuiltinFloat = 3;
-    type BuiltinInt64 = 4;
-    type BuiltinString = 5;
-    type BuiltinText = 6;
-    type BuiltinName = 7;
+    type BuiltinDouble = 4;
+    type BuiltinInt64 = 5;
+    type BuiltinString = 6;
+    type BuiltinText = 7;
+    type BuiltinName = 8;
 
     const BuiltinBool = 0;
     const BuiltinByte = 1;
     const BuiltinInt = 2;
     const BuiltinFloat = 3;
-    const BuiltinInt64 = 4;
-    const BuiltinString = 5;
-    const BuiltinText = 6;
-    const BuiltinName = 7;
+    const BuiltinDouble = 4;
+    const BuiltinInt64 = 5;
+    const BuiltinString = 6;
+    const BuiltinText = 7;
+    const BuiltinName = 8;
 
     type ContainerKVType<T> = 
         T extends BuiltinBool ? boolean : 
-        T extends BuiltinByte | BuiltinInt | BuiltinFloat ? number :
+        T extends BuiltinByte | BuiltinInt | BuiltinFloat | BuiltinDouble ? number :
         T extends BuiltinInt64 ? bigint :
         T extends BuiltinString | BuiltinText | BuiltinName ? string :
         T extends {__typeKeyDoNoAccess: infer R} ? R :
         T extends {new (...args:any[]): infer R} ? R :
         never;
 
-    type SupportedContainerKVType = BuiltinBool | BuiltinByte | BuiltinInt | BuiltinFloat | BuiltinInt64 | BuiltinString | BuiltinText | BuiltinName | {StaticClass(): Class} | {StaticStruct(): ScriptStruct} | {__typeKeyDoNoAccess: any}
+    type SupportedContainerKVType = BuiltinBool | BuiltinByte | BuiltinInt | BuiltinFloat | BuiltinDouble | BuiltinInt64 | BuiltinString | BuiltinText | BuiltinName | {StaticClass(): Class} | {StaticStruct(): ScriptStruct} | {__typeKeyDoNoAccess: any}
 
     function NewArray<T extends SupportedContainerKVType>(t: T): TArray<ContainerKVType<T>>;
     function NewSet<T extends SupportedContainerKVType>(t: T): TSet<ContainerKVType<T>>;

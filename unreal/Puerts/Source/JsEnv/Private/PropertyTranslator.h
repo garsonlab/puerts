@@ -1,6 +1,6 @@
 ﻿/*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -19,14 +19,16 @@
 #include "UObject/WeakFieldPtr.h"
 #endif
 
-#pragma warning(push, 0)
+#include "NamespaceDef.h"
 #include "ArrayBuffer.h"
 #include "JsObject.h"
+
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
+#pragma warning(push, 0)
 #include "libplatform/libplatform.h"
 #include "v8.h"
 #pragma warning(pop)
-
-#include "NamespaceDef.h"
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 
 namespace PUERTS_NAMESPACE
 {
@@ -153,12 +155,6 @@ public:
 #endif
     };
 
-#if ENGINE_MINOR_VERSION < 25 && ENGINE_MAJOR_VERSION < 5
-    TWeakObjectPtr<PropertyMacro> PropertyWeakPtr;
-#else
-    TWeakFieldPtr<PropertyMacro> PropertyWeakPtr;
-#endif
-
     bool OwnerIsClass;
 
     bool NeedLinkOuter;
@@ -179,5 +175,28 @@ public:
     static void DelegateGetter(const v8::FunctionCallbackInfo<v8::Value>& Info);
 
     void SetAccessor(v8::Isolate* Isolate, v8::Local<v8::FunctionTemplate> Template);
+
+    bool IsPropertyValid()
+    {
+        if (!PropertyWeakPtr.IsValid())
+        {
+            return false;
+        }
+#if WITH_EDITOR
+        FProperty* TestP = PropertyWeakPtr.Get();
+        if (TestP != Property)
+        {
+            Init(TestP);
+        }
+#endif
+        return true;
+    }
+
+private:
+#if ENGINE_MINOR_VERSION < 25 && ENGINE_MAJOR_VERSION < 5
+    TWeakObjectPtr<PropertyMacro> PropertyWeakPtr;
+#else
+    TWeakFieldPtr<PropertyMacro> PropertyWeakPtr;
+#endif
 };
 }    // namespace PUERTS_NAMESPACE

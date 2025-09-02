@@ -41,6 +41,24 @@ namespace Puerts.UnitTest
         }
     }
 
+    [UnityEngine.Scripting.Preserve]
+    public class GenericTestClass<T>
+    {
+        [UnityEngine.Scripting.Preserve]
+        public class Inner
+        {
+            [UnityEngine.Scripting.Preserve]
+            public const string stringProp = "hello";
+
+            [UnityEngine.Scripting.Preserve]
+            public Inner()
+            {
+            }
+        }
+
+        public static T v;
+    }
+
     [TestFixture]
     public class GenericUnitTest
     {
@@ -141,11 +159,7 @@ namespace Puerts.UnitTest
                         return func('hello');
                     })();
                 ");
-#if EXPERIMENTAL_IL2CPP_PUERTS && !UNITY_EDITOR
-            }, "'System.String' cannot be converted to type 'System.Int32'");
-#else 
             }, "invalid arguments to StaticGenericMethod");
-#endif
             jsEnv.Tick();
         }
 
@@ -199,6 +213,53 @@ namespace Puerts.UnitTest
             ");
             Assert.AreEqual(genericTypeName1, "world_Int32");
             
+            jsEnv.Tick();
+        }
+
+        // web环境没有gc这个api
+#if !UNITY_WEBGL || UNITY_EDITOR
+        [Test]
+        public void CreateFunctionByMethodInfoTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+
+            string ret = jsEnv.Eval<string>(@"
+                (function() {
+                    const cls = puer.$typeof(CS.Puerts.UnitTest.GenericTestClass);
+                    const methods = CS.Puerts.Utils.GetMethodAndOverrideMethodByName(cls, 'StaticGenericMethod');
+                    let overloads = [];
+                    for (let i = 0; i < methods.Length; i++) {
+                        let method = methods.GetValue(i)
+                        overloads.push(method.MakeGenericMethod(puer.$typeof(CS.System.Int32)));
+                    }
+                    const func = puer.createFunction(...overloads);
+                    return func() + func(1024);
+                })();
+            ");
+            Assert.AreEqual(ret, "Int321024");
+
+            if (jsEnv.Backend is BackendV8)
+            {
+                jsEnv.Eval("gc()");
+            }
+
+            jsEnv.Tick();
+        }
+#endif
+
+        [Test]
+        public void GenericAccessTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var res = jsEnv.Eval<string>(@"
+                (function() {
+                    let GenericTestClass = puerts.$generic(CS.Puerts.UnitTest.GenericTestClass$1, CS.System.String);
+                    GenericTestClass.v = '6';
+                    new GenericTestClass.Inner();
+                    return GenericTestClass.Inner.stringProp;
+                })()
+            ");
+            Assert.AreEqual(res, "hello");
             jsEnv.Tick();
         }
     }

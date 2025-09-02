@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -76,6 +76,10 @@ PropertyMacro* FContainerMeta::GetBuiltinProperty(BuiltinType type)
                 Ret = new (EC_InternalUseOnlyConstructor, PropertyMetaRoot, NAME_None, RF_Transient)
                     UFloatProperty(FObjectInitializer(), EC_CppProperty, 0, CPF_HasGetValueTypeHash);
                 break;
+            case TDouble:
+                Ret = new (EC_InternalUseOnlyConstructor, PropertyMetaRoot, NAME_None, RF_Transient)
+                    UDoubleProperty(FObjectInitializer(), EC_CppProperty, 0, CPF_HasGetValueTypeHash);
+                break;
             case TInt64:
                 Ret = new (EC_InternalUseOnlyConstructor, PropertyMetaRoot, NAME_None, RF_Transient)
                     UInt64Property(FObjectInitializer(), EC_CppProperty, 0, CPF_HasGetValueTypeHash);
@@ -109,6 +113,10 @@ PropertyMacro* FContainerMeta::GetBuiltinProperty(BuiltinType type)
                 Ret = new FFloatProperty(PropertyMetaRoot, NAME_None, RF_Transient);
                 Ret->PropertyFlags |= CPF_HasGetValueTypeHash;
                 break;
+            case TDouble:
+                Ret = new FDoubleProperty(PropertyMetaRoot, NAME_None, RF_Transient);
+                Ret->PropertyFlags |= CPF_HasGetValueTypeHash;
+                break;
             case TInt64:
                 Ret = new FInt64Property(PropertyMetaRoot, NAME_None, RF_Transient);
                 Ret->PropertyFlags |= CPF_HasGetValueTypeHash;
@@ -137,6 +145,9 @@ PropertyMacro* FContainerMeta::GetBuiltinProperty(BuiltinType type)
                 break;
             case TFloat:
                 Ret = new FFloatProperty(PropertyMetaRoot, NAME_None, RF_Transient, 0, CPF_HasGetValueTypeHash);
+                break;
+            case TDouble:
+                Ret = new FDoubleProperty(PropertyMetaRoot, NAME_None, RF_Transient, 0, CPF_HasGetValueTypeHash);
                 break;
             case TInt64:
                 Ret = new FInt64Property(PropertyMetaRoot, NAME_None, RF_Transient, 0, CPF_HasGetValueTypeHash);
@@ -217,7 +228,12 @@ PropertyMacro* FContainerMeta::GetObjectProperty(UField* Field)
         if (Enum->GetCppForm() == UEnum::ECppForm::EnumClass)
         {
             FEnumProperty* EnumProp =
+#if ENGINE_MAJOR_VERSION > 4 && ENGINE_MINOR_VERSION > 4    // 5.5+
+                new FEnumProperty(PropertyMetaRoot, NAME_None, RF_Transient);
+            EnumProp->SetEnum(Enum);
+#else
                 new FEnumProperty(PropertyMetaRoot, NAME_None, RF_Transient, 0, CPF_HasGetValueTypeHash, Enum);
+#endif
             FNumericProperty* UnderlyingProp = new FByteProperty(EnumProp, TEXT("UnderlyingType"), RF_Transient);
             EnumProp->AddCppProperty(UnderlyingProp);
             EnumProp->ElementSize = UnderlyingProp->ElementSize;

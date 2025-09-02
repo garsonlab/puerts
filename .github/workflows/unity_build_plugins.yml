@@ -2,15 +2,39 @@ name: unity build plugins
 
 on: 
   workflow_dispatch:
+    inputs:
+      websocket:
+        type: choice
+        options:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        default: '1'
   push:
     paths: 
-      - unity/native_src/**
-      - unity/native_src_il2cpp/**
+      - unity/native/**
       - unity/cli/**
       - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+      - unreal/Puerts/Source/JsEnv/Private/WebSocketImpl.cpp
       - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.h
       - unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
+      - unreal/Puerts/ThirdParty/**
       - .github/workflows/unity_build_plugins.yml
+      - .github/workflows/composites/unity-build-plugins/**
+  pull_request:
+    paths: 
+      - unity/native/**
+      - unity/cli/**
+      - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+      - unreal/Puerts/Source/JsEnv/Private/WebSocketImpl.cpp
+      - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.h
+      - unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
+      - unreal/Puerts/ThirdParty/**
+      - .github/workflows/unity_build_plugins.yml
+      - .github/workflows/composites/unity-build-plugins/**
+#    branches-ignore:
+#      - 'unity-3.0.0'
 
 env:
   RUNID: 613573412
@@ -18,146 +42,254 @@ env:
 jobs:
   android:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v3
-      - name: BuildAndroid
+      - name: Install NDK
+        shell: bash
+        run: |
+          cd ~
+          rm -rf ~/android-ndk-r21b
+          wget -O NDK -q https://dl.google.com/android/repository/android-ndk-r21b-linux-x86_64.zip
+          sudo apt install unzip -y
+          unzip -q NDK
+      - name: puerts
         uses: ./.github/workflows/composites/unity-build-plugins/android/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: v8_9.4
-      - name: BuildAndroidQuickJS
+          backend: puerts
+      - name: papi-v8
         uses: ./.github/workflows/composites/unity-build-plugins/android/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: quickjs
-      - name: BuildAndroidNodeJS
+          backend: papi-v8
+      - name: papi-quickjs
         uses: ./.github/workflows/composites/unity-build-plugins/android/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: nodejs_16
-      - name: BuildAndroidMultBackend
+          backend: papi-quickjs
+      - name: papi-lua
         uses: ./.github/workflows/composites/unity-build-plugins/android/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: mult
+          backend: papi-lua
+      - name: papi-nodejs
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-nodejs
+      - name: wsppaddon
+        uses: ./.github/workflows/composites/unity-build-plugins/android/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: wsppaddon
+          websocket: 2
           
   ohos:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v3
-      - name: BuildOHOS
+      - name: Install NDK
+        shell: bash
+        run: |
+          cd ~
+          curl -O https://repo.huaweicloud.com/harmonyos/os/4.1-Release/ohos-sdk-windows_linux-public.tar.gz
+          tar xvfz ohos-sdk-windows_linux-public.tar.gz
+          cd ohos-sdk/linux
+          unzip -q -o -d ./ native-linux-x64-4.1.7.5-Release.zip
+      - name: puerts
         uses: ./.github/workflows/composites/unity-build-plugins/ohos/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: v8_9.4
-      - name: BuildOHOSQuickJS
+          backend: puerts
+      - name: papi-v8
         uses: ./.github/workflows/composites/unity-build-plugins/ohos/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: quickjs
+          backend: papi-v8
+      - name: papi-quickjs
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-quickjs
+      - name: papi-lua
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-lua
+      - name: wsppaddon
+        uses: ./.github/workflows/composites/unity-build-plugins/ohos/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: wsppaddon
+          websocket: 2
 
   ios:
-    runs-on: macos-11
-
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v3
-      - name: BuildiOS
+      - name: puerts
         uses: ./.github/workflows/composites/unity-build-plugins/ios/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: v8_9.4
-      - name: BuildiOSQuickjs
+          backend: puerts
+      - name: papi-v8
         uses: ./.github/workflows/composites/unity-build-plugins/ios/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: quickjs
-      - name: BuildiOSNodeJS
+          backend: papi-v8
+      - name: papi-quickjs
         uses: ./.github/workflows/composites/unity-build-plugins/ios/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: nodejs_16
-      - name: BuildiOSMultBackend
+          backend: papi-quickjs
+      - name: papi-lua
         uses: ./.github/workflows/composites/unity-build-plugins/ios/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: mult
+          backend: papi-lua
+      - name: papi-nodejs
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-nodejs
+      - name: wsppaddon
+        uses: ./.github/workflows/composites/unity-build-plugins/ios/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: wsppaddon
+          websocket: 2
 
   osx:
-    runs-on: macos-11
-
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
-      - name: BuildOSX
+      - name: puerts
         uses: ./.github/workflows/composites/unity-build-plugins/osx/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: v8_9.4
-      - name: BuildOSXNodejs
+          backend: puerts
+      - name: papi-v8
         uses: ./.github/workflows/composites/unity-build-plugins/osx/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: nodejs_16
-      - name: BuildOSXQuickJS
+          backend: papi-v8
+      - name: papi-quickjs
         uses: ./.github/workflows/composites/unity-build-plugins/osx/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: quickjs
-      - name: BuildOSXMultBackend
+          backend: papi-quickjs
+      - name: papi-lua
         uses: ./.github/workflows/composites/unity-build-plugins/osx/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: mult
+          backend: papi-lua
+      - name: papi-nodejs
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-nodejs
+      - name: wsppaddon
+        uses: ./.github/workflows/composites/unity-build-plugins/osx/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: wsppaddon
+          websocket: 2
 
   windows:
-    runs-on: windows-2019
-
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v3
-      - name: BuildWindows
+      - name: puerts
         uses: ./.github/workflows/composites/unity-build-plugins/windows/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: v8_9.4
-      - name: BuildWindowsQuickjs
+          backend: puerts
+      - name: papi-v8
         uses: ./.github/workflows/composites/unity-build-plugins/windows/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: quickjs
-      - name: BuildWindowsNodeJS
+          backend: papi-v8
+      - name: papi-quickjs
         uses: ./.github/workflows/composites/unity-build-plugins/windows/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: nodejs_16
-      - name: BuildWindowsMultBackend
+          backend: papi-quickjs
+      - name: papi-lua
         uses: ./.github/workflows/composites/unity-build-plugins/windows/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: mult
+          backend: papi-lua
+      - name: papi-nodejs
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-nodejs
+      - name: wsppaddon
+        uses: ./.github/workflows/composites/unity-build-plugins/windows/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: wsppaddon
+          websocket: 2
 
   linux64:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v3
-      - name: BuildLinux
+      - name: Install LibC++
+        run: |
+          sudo apt-get update
+          sudo apt-get install clang
+          sudo apt-get install build-essential
+          sudo apt-get install libc++-dev
+          sudo apt-get install libc++abi-dev
+      - name: puerts
         uses: ./.github/workflows/composites/unity-build-plugins/linux/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: v8_9.4
-      - name: BuildWindowsQuickjs
+          backend: puerts
+      - name: papi-v8
         uses: ./.github/workflows/composites/unity-build-plugins/linux/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: quickjs
-      - name: BuildLinuxNodeJS
+          backend: papi-v8
+      - name: papi-quickjs
         uses: ./.github/workflows/composites/unity-build-plugins/linux/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: nodejs_16
-      - name: BuildLinuxMultBackend
+          backend: papi-quickjs
+      - name: papi-lua
         uses: ./.github/workflows/composites/unity-build-plugins/linux/
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          backend: mult
+          backend: papi-lua
+      - name: papi-nodejs
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-nodejs
+      - name: wsppaddon
+        uses: ./.github/workflows/composites/unity-build-plugins/linux/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: wsppaddon
+          websocket: 2
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: puerts
+        uses: ./.github/workflows/composites/unity-build-plugins/wasm/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: puerts
+      - name: papi-quickjs
+        uses: ./.github/workflows/composites/unity-build-plugins/wasm/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-quickjs
+      - name: papi-lua
+        uses: ./.github/workflows/composites/unity-build-plugins/wasm/
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          backend: papi-lua

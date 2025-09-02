@@ -6,11 +6,16 @@ namespace Puerts.UnitTest
     [TestFixture]
     public class EvalTest
     {
-        // [Test]
-        // public void ForceFail()
-        // {
-        //     Assert.True(1 == 2);
-        // }
+        [Test]
+        public void JustPrintBackend()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+#if PUERTS_GENERAL
+            Console.WriteLine("ENV_BACKEND: " + jsEnv.Backend.GetType());
+#else
+            UnityEngine.Debug.Log("ENV_BACKEND: " + jsEnv.Backend.GetType());
+#endif
+        }
         [Test]
         public void EvalError()
         {
@@ -458,6 +463,8 @@ export default DModule;");
             jsEnv.Tick();
             StringAssert.Contains("not a function", jsEnv.Eval<string>("error_ESDynamicModuleEvaluateError.toString()"));
         }
+
+#if !UNITY_WEBGL || UNITY_EDITOR
         [Test]
         public void ESDynamicModuleImportRelative()
         {
@@ -471,5 +478,6 @@ export default DModule;");
             jsEnv.Tick();
             StringAssert.Contains("hello", jsEnv.Eval<string>("result_ESDynamicModuleImportRelative.toString()"));
         }
+#endif
     }
 }

@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -123,6 +123,8 @@ public:
     virtual void ReturnFunction(const void* Info, void* Function) = 0;
 
     virtual void ReturnCSharpFunctionCallback(const void* Info, FuncPtr Callback, int64_t Data) = 0;
+    
+    virtual void ReturnCSharpFunctionCallback(const void* Info, FuncPtr Callback, FuncPtr Finalize, int64_t Data) = 0;
 
     virtual void ReturnJSObject(const void* Info, void* Object) = 0;
     //-------------------------- end js call cs --------------------------
@@ -194,6 +196,8 @@ public:
     virtual void LogicTick() = 0;
 
     //-------------------------- end debug --------------------------
+    
+    virtual void TerminateExecution() = 0;
     
     virtual ~IPuertsPlugin()
     {

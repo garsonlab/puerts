@@ -21,11 +21,11 @@ If you encounter this problem, first check whether you are using the DefaultLoad
 
 `Puer003` is similar to `Puer002`, except that the `ReadFile` function of Loader returns empty. You also need to check why `FileExists` or `Resolve` returns true, but `ReadFile` reads empty.
 
-#### [Puer W001] You are not using upm to install PuerTS or did not add 'PUERTS_CPP_OUTPUT_TO_NATIVE_SRC_UPM' definition.
+#### [Puer W001] You are not using upm to install PuerTS or did not add 'PUERTS_CPP_OUTPUT_TO_UPM' definition.
 
 In xil2cpp mode, the product of PuerTS->Generate needs to be recompiled by the plugin to be used. Therefore, Puer needs to put the product of Generate back to the plugin source code directory. 
 
-If you did not use the recommended way of [document](./performance/il2cpp.md) to `git clone` and add PuerTS from the package manager, plus adding the `PUERTS_CPP_OUTPUT_TO_NATIVE_SRC_UPM` macro, you need to take the compiled product and compile the plugin yourself.
+If you did not use the recommended way of [document](./performance/il2cpp.md) to `git clone` and add PuerTS from the package manager, plus adding the `PUERTS_CPP_OUTPUT_TO_UPM` macro, you need to take the compiled product and compile the plugin yourself.
 
 ## Installation relavanted
 
@@ -131,3 +131,7 @@ By default, reflection is not used to obtain extension functions after packaging
 #### `GetComponent<XXX>()` is null in CS, but not null when called in JS, why?
 
 Actually, the C# object is not null. It is the `==` operator overloaded by UnityEngine.Object. When an object is Destroyed, uninitialized, etc., `obj == null` returns true; `GetComponent<XXX>()` also returns null if the component does not exist, and the result of the
+
+#### undefined symbol: InitialPuerts
+
+No code has been generated. Please follow the [il2cpp Optimization Features/Usage Steps](performance/il2cpp.md#usage-steps) Steps to proceed.

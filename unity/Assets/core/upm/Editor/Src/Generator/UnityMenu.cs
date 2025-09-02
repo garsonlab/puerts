@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms. 
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -21,6 +21,7 @@ namespace Puerts.Editor
             public const string PUERTS_MENU_PREFIX = "Tools/PuerTS";
 
 #if !PUERTS_GENERAL
+            /*
             [MenuItem(PUERTS_MENU_PREFIX + "/Generate (all in one)", false, 1)]
             public static void GenV1() 
             {
@@ -35,15 +36,23 @@ namespace Puerts.Editor
                 var saveTo = Configure.GetCodeOutputDirectory();
                 Directory.CreateDirectory(saveTo);
 
-                FileExporter.ExportWrapper(saveTo);
+                //FileExporter.ExportWrapper(saveTo);
                 Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
                 Debug.Log("finished! use " + (DateTime.Now - start).TotalMilliseconds + " ms");
                 AssetDatabase.Refresh();
 
+#if UNITY_WEBGL
+                var cxxOutDir = Path.Combine(Puerts.Configure.GetCodeOutputDirectory(), "Plugins/puerts_il2cpp/");
+                Directory.CreateDirectory(cxxOutDir);
+                PuertsIl2cpp.Editor.Generator.FileExporter.GenMarcoHeader(cxxOutDir);
+                PuertsIl2cpp.Editor.Generator.FileExporter.GenPapi(cxxOutDir);
+#endif
+
                 Utils.SetFilters(null);
             }
+            */
 
-            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/index.d.ts", false, 6)]
+            [MenuItem(PUERTS_MENU_PREFIX + "/Generate index.d.ts", false, 1)]
             public static void GenerateDTS()
             {
                 var start = DateTime.Now;
@@ -81,13 +90,13 @@ namespace Puerts.Editor
                 }
             }
 
-            [MenuItem(PUERTS_MENU_PREFIX + "/Generate/RegisterInfo", false, 7)]
+            //[MenuItem(PUERTS_MENU_PREFIX + "/Generate/RegisterInfo", false, 7)]
             public static void GenRegisterInfo()
             {
                 var start = DateTime.Now;
                 var saveTo = Puerts.Configure.GetCodeOutputDirectory();
                 Directory.CreateDirectory(saveTo);
-                FileExporter.GenRegisterInfo(saveTo);
+                //FileExporter.GenRegisterInfo(saveTo);
                 Debug.Log("finished! use " + (DateTime.Now - start).TotalMilliseconds + " ms Outputed to " + saveTo);
                 AssetDatabase.Refresh();
             }

@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -68,6 +68,21 @@
     }                                                                       \
     UsingNamedCppType(CLS, CLS)
 
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION >= 4
+#define RegisterTArray(CLS)                                                                                                        \
+    PUERTS_NAMESPACE::DefineClass<TArray<CLS>>()                                                                                   \
+        .Method("Add", SelectFunction(int (TArray<CLS>::*)(CLS const&), &TArray<CLS>::Add))                                        \
+        .Method("Get", SelectFunction(CLS& (TArray<CLS>::*) (int), &TArray<CLS>::operator[]))                                      \
+        .Method("GetRef", SelectFunction(CLS& (TArray<CLS>::*) (int), &TArray<CLS>::operator[]))                                   \
+        .Method("Num", MakeFunction(&TArray<CLS>::Num))                                                                            \
+        .Method("Contains", MakeFunction(&TArray<CLS>::Contains<CLS>))                                                             \
+        .Method("FindIndex", SelectFunction(int (TArray<CLS>::*)(CLS const&) const, &TArray<CLS>::Find))                           \
+        .Method(                                                                                                                   \
+            "RemoveAt", SelectFunction(void (TArray<CLS>::*)(int, /* New param in 5.4*/ EAllowShrinking), &TArray<CLS>::RemoveAt)) \
+        .Method("IsValidIndex", MakeFunction(&TArray<CLS>::IsValidIndex))                                                          \
+        .Method("Empty", MakeFunction(&TArray<CLS>::Empty))                                                                        \
+        .Register()
+#else
 #define RegisterTArray(CLS)                                                                              \
     PUERTS_NAMESPACE::DefineClass<TArray<CLS>>()                                                         \
         .Method("Add", SelectFunction(int (TArray<CLS>::*)(CLS const&), &TArray<CLS>::Add))              \
@@ -80,6 +95,7 @@
         .Method("IsValidIndex", MakeFunction(&TArray<CLS>::IsValidIndex))                                \
         .Method("Empty", MakeFunction(&TArray<CLS>::Empty))                                              \
         .Register()
+#endif
 
 #define UsingUStruct(CLS) UsingUClass(CLS)
 
@@ -402,8 +418,29 @@ struct ScriptTypeName<FArrayBufferValue>
 };
 
 template <typename T>
+struct is_ue_container : std::false_type
+{
+};
+
+template <typename T>
+struct is_ue_container<TArray<T>> : std::true_type
+{
+};
+
+template <typename T>
+struct is_ue_container<TSet<T>> : std::true_type
+{
+};
+
+template <typename TKey, typename TValue>
+struct is_ue_container<TMap<TKey, TValue>> : std::true_type
+{
+};
+
+template <typename T>
 struct ScriptTypeNameWithNamespace<T,
-    typename std::enable_if<is_objecttype<typename std::remove_pointer<typename std::decay<T>::type>::type>::value>::type>
+    typename std::enable_if<is_objecttype<typename std::remove_pointer<typename std::decay<T>::type>::type>::value &&
+                            !is_ue_container<typename std::remove_pointer<typename std::decay<T>::type>::type>::value>::type>
 {
     static constexpr auto value()
     {
@@ -458,6 +495,11 @@ struct ScriptTypeName<TMap<TKey, TValue>>
     }
 };
 
+template <>
+struct is_char<TCHAR> : std::true_type
+{
+};
+
 namespace internal
 {
 template <typename T, typename = void>
@@ -474,10 +516,10 @@ struct IsUStructHelper<T, Void_t<decltype(&TScriptStructTraits<T>::Get)>> : std:
 namespace v8_impl
 {
 template <typename T>
-struct Converter<T*,
-    typename std::enable_if<!std::is_convertible<T*, const UObject*>::value && internal::IsUStructHelper<T>::value>::type>
+struct Converter<T*, typename std::enable_if<!std::is_const<T>::value && !std::is_convertible<T*, const UObject*>::value &&
+                                             internal::IsUStructHelper<T>::value>::type>
 {
-    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, T* value)
+    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, const T* value)
     {
         return DataTransfer::FindOrAddStruct<T>(context->GetIsolate(), context, (void*) value, true);
     }
@@ -494,9 +536,16 @@ struct Converter<T*,
 };
 
 template <typename T>
+struct Converter<const T*,
+    typename std::enable_if<!std::is_convertible<T*, const UObject*>::value && internal::IsUStructHelper<T>::value>::type>
+    : Converter<T*>
+{
+};
+
+template <typename T>
 struct Converter<T, typename std::enable_if<internal::IsUStructHelper<T>::value>::type>
 {
-    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, T value)
+    static v8::Local<v8::Value> toScript(v8::Local<v8::Context> context, const T value)
     {
         return DataTransfer::FindOrAddStruct<T>(context->GetIsolate(), context, new T(value), false);
     }
@@ -513,6 +562,16 @@ struct Converter<T, typename std::enable_if<internal::IsUStructHelper<T>::value>
     }
 };
 
+template <typename T>
+struct Converter<const T, typename std::enable_if<internal::IsUStructHelper<T>::value>::type> : Converter<T>
+{
+};
+
 }    // namespace v8_impl
+
+template <typename T>
+struct ScriptTypeName<const T, typename std::enable_if<internal::IsUStructHelper<T>::value>::type> : ScriptTypeName<T>
+{
+};
 
 }    // namespace PUERTS_NAMESPACE

@@ -1,18 +1,20 @@
 ﻿/*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
  */
 
-#if defined(UE_GAME) || defined(UE_EDITOR)
+// TODO: 静态库11.8 window调试崩溃
+
+#if defined(UE_GAME) || defined(UE_EDITOR) || defined(UE_SERVER) || defined(USING_IN_UNREAL_ENGINE)
 #define USING_UE 1
 #else
 #define USING_UE 0
 #endif
 
-#if (PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_LINUX || WITH_INSPECTOR) && !defined(WITHOUT_INSPECTOR)
+#if (PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_LINUX || defined(WITH_INSPECTOR)) && !defined(WITHOUT_INSPECTOR)
 
 #include "V8InspectorImpl.h"
 
@@ -25,8 +27,11 @@
 #include <locale>
 #include <codecvt>
 
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #pragma warning(push)
+#if defined(_MSC_VER)
 #pragma warning(disable : 4251)
+#endif
 #include "v8.h"
 #include "v8-inspector.h"
 #include "libplatform/libplatform.h"
@@ -38,6 +43,7 @@
 #define _WEBSOCKETPP_CPP11_TYPE_TRAITS_
 #include "websocketpp/config/asio_no_tls.hpp"
 #include "websocketpp/server.hpp"
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 
 #if USING_UE
 #include "Containers/Ticker.h"
@@ -54,8 +60,7 @@ namespace PUERTS_NAMESPACE
 class V8InspectorChannelImpl : public v8_inspector::V8Inspector::Channel, public V8InspectorChannel
 {
 public:
-    V8InspectorChannelImpl(
-        v8::Isolate* InIsolate, const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID);
+    V8InspectorChannelImpl(v8::Isolate* InIsolate, v8_inspector::V8Inspector* InV8Inspector, const int32_t InCxtGroupID);
 
     void DispatchProtocolMessage(const std::string& Message) override;
 
@@ -85,7 +90,7 @@ private:
 };
 
 V8InspectorChannelImpl::V8InspectorChannelImpl(
-    v8::Isolate* InIsolate, const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID)
+    v8::Isolate* InIsolate, v8_inspector::V8Inspector* InV8Inspector, const int32_t InCxtGroupID)
 {
     v8_inspector::StringView DummyState;
     Isolate = InIsolate;
@@ -187,6 +192,11 @@ public:
 
     V8InspectorChannel* CreateV8InspectorChannel() override;
 
+    v8::Local<v8::Context> ensureDefaultContextInGroup(int group_id) override
+    {
+        return Context.Get(Isolate);
+    }
+
 private:
     void OnHTTP(wspp_connection_hdl Handle);
 
@@ -217,7 +227,11 @@ private:
 
     int32_t Port;
 
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8_inspector::V8Inspector* V8Inspector;
+#else
     std::unique_ptr<v8_inspector::V8Inspector> V8Inspector;
+#endif
 
     int32_t CtxGroupID;
 
@@ -282,10 +296,15 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
     IsAlive = false;
     Connected = false;
 
-    CtxGroupID = 1;
+    static int32_t CurrentCtxGroupID = 1;
+    CtxGroupID = CurrentCtxGroupID++;
     const uint8_t CtxNameConst[] = "V8InspectorContext";
     v8_inspector::StringView CtxName(CtxNameConst, sizeof(CtxNameConst) - 1);
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    V8Inspector = V8Inspector_Create_Without_Stl(Isolate, this);
+#else
     V8Inspector = v8_inspector::V8Inspector::create(Isolate, this);
+#endif
     V8Inspector->contextCreated(v8_inspector::V8ContextInfo(InContext, CtxGroupID, CtxName));
 
     if (Port < 0)
@@ -313,16 +332,16 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
         "Protocol-Version": "1.1"
         })";
 
-        JSONList = R"([{
-        "description": "Puerts Inspector",
-        "id": "0",
-        "title": "Puerts Inspector",
-        "type": "node",
-        )";
-        JSONList += "\"webSocketDebuggerUrl\"";
-        JSONList += ":";
-        JSONList += "\"ws://127.0.0.1:";
-        JSONList += std::to_string(Port) + "\"\r\n}]";
+        JSONList = R"([
+			{
+				"description": "Puerts Inspector",
+				"id": "0",
+				"title": "Puerts Inspector",
+				"type": "node",
+				"webSocketDebuggerUrl": "ws://127.0.0.1:)" +
+                   std::to_string(Port) + R"("
+			}
+		])";
 
         IsAlive = true;
 
@@ -352,12 +371,19 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
 
 V8InspectorChannel* V8InspectorClientImpl::CreateV8InspectorChannel()
 {
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
     return new V8InspectorChannelImpl(Isolate, V8Inspector, CtxGroupID);
+#else
+    return new V8InspectorChannelImpl(Isolate, V8Inspector.get(), CtxGroupID);
+#endif
 }
 
 V8InspectorClientImpl::~V8InspectorClientImpl()
 {
     Close();
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8_inspector::V8Inspector_Destroy_Without_Stl(V8Inspector);
+#endif
 }
 
 void V8InspectorClientImpl::Close()
@@ -402,7 +428,7 @@ bool V8InspectorClientImpl::Tick(float /* DeltaTime */)
                 v8::Context::Scope ContextScope(LocalContext);
                 v8::TryCatch TryCatch(Isolate);
 
-                MicroTasksRunner.Get(Isolate)->Call(LocalContext, LocalContext->Global(), 0, nullptr);
+                (void) (MicroTasksRunner.Get(Isolate)->Call(LocalContext, LocalContext->Global(), 0, nullptr));
             }
         }
     }
@@ -473,7 +499,7 @@ void V8InspectorClientImpl::OnHTTP(wspp_connection_hdl Handle)
 
 void V8InspectorClientImpl::OnOpen(wspp_connection_hdl Handle)
 {
-    V8InspectorChannelImpl* channel = new V8InspectorChannelImpl(Isolate, V8Inspector, CtxGroupID);
+    V8InspectorChannelImpl* channel = static_cast<V8InspectorChannelImpl*>(CreateV8InspectorChannel());
     V8InspectorChannels[Handle.lock().get()] = channel;
     channel->OnMessage(std::bind(&V8InspectorClientImpl::OnSendMessage, this, Handle, std::placeholders::_1));
 #if USING_UE
@@ -534,8 +560,12 @@ void V8InspectorClientImpl::OnClose(wspp_connection_hdl Handle)
 
 void V8InspectorClientImpl::OnFail(wspp_connection_hdl Handle)
 {
+    wspp_server::connection_ptr con = Server.get_con_from_hdl(Handle);
+    std::string message = con->get_ec().message();
 #if USING_UE
-    UE_LOG(LogV8Inspector, Error, TEXT("Connection OnFail"));
+    UE_LOG(LogV8Inspector, Error, TEXT("Connection OnFail %s"), UTF8_TO_TCHAR(message.c_str()));
+#else
+    puerts::PLog(puerts::Error, "Connection OnFail %s", message.c_str());
 #endif
 }
 

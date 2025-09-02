@@ -1,6 +1,6 @@
 ﻿/*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms. 
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -50,6 +50,12 @@ namespace Puerts.UnitTest
         {
             return (string.Format("Extension2<{0},{1}>", typeof(T1), typeof(T2)));
         }
+
+        [UnityEngine.Scripting.Preserve]
+        public static string Extension3<T>(this T a, string b) where T : ExtensionTestHelper
+        {
+            return b;
+        }
     }
 
     [TestFixture]
@@ -63,6 +69,20 @@ namespace Puerts.UnitTest
                 (function() {
                     let obj = new CS.Puerts.UnitTest.ExtensionTestHelper();
                     let res = obj.PrimitiveExtension();
+                    return res;
+                })()
+            ");
+            Assert.AreEqual(res, 111);
+        }
+
+        [Test]
+        public void DirectPrimitiveTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var res = jsEnv.Eval<int>(@"
+                (function() {
+                    let obj = new CS.Puerts.UnitTest.ExtensionTestHelper();
+                    let res = CS.Puerts.UnitTest.HelperExtension.PrimitiveExtension(obj);
                     return res;
                 })()
             ");
@@ -97,6 +117,7 @@ namespace Puerts.UnitTest
             Assert.AreEqual(res.ToString(), "Puerts.UnitTest.ExtensionTestHelper");
         }
 
+        [Test]
         public void ExtensionGenerateBaseTest_1()
         {
             var jsEnv = UnitTestEnv.GetEnv();
@@ -108,6 +129,20 @@ namespace Puerts.UnitTest
                 })()
             ");
             Assert.AreEqual(res.ToString(), "Puerts.UnitTest.ExtensionTestHelper");
+        }
+
+        [Test]
+        public void ExtensionGenerateBaseTest_3()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var res = jsEnv.Eval<string>(@"
+                (function() {
+                    let obj = new CS.Puerts.UnitTest.ExtensionTestHelper();
+                    let res = obj.Extension3('123');
+                    return res;
+                })()
+            ");
+            Assert.AreEqual(res, "123");
         }
 
         [Test]

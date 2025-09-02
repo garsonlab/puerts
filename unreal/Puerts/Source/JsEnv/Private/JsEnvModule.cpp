@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -9,12 +9,19 @@
 #include "JsEnvModule.h"
 //#include "TGameJSCorePCH.h"
 #include "HAL/MemoryBase.h"
+#include "NamespaceDef.h"
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #if defined(WITH_NODEJS)
 #pragma warning(push, 0)
 #include "node.h"
 #include "uv.h"
 #pragma warning(pop)
 #endif
+#pragma warning(push, 0)
+#include "v8.h"
+#include "libplatform/libplatform.h"
+#pragma warning(pop)
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 
 class FMallocWrapper final : public FMalloc
 {
@@ -137,13 +144,6 @@ public:
     }
 };
 
-#pragma warning(push, 0)
-#include "v8.h"
-#include "libplatform/libplatform.h"
-#pragma warning(pop)
-
-#include "NamespaceDef.h"
-
 DEFINE_LOG_CATEGORY_STATIC(JsEnvModule, Log, All);
 
 class FJsEnvModule : public IJsEnvModule
@@ -158,7 +158,11 @@ public:
     void* GetV8Platform() override;
 
 private:
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8::Platform* platform_;
+#else
     std::unique_ptr<v8::Platform> platform_;
+#endif
 };
 
 IMPLEMENT_MODULE(FJsEnvModule, JsEnv)
@@ -168,9 +172,13 @@ void FJsEnvModule::StartupModule()
     int* Dummy = new (std::nothrow) int[0];
     if (!Dummy)
     {
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 5
+        UE_LOG(JsEnvModule, Error, TEXT("new (std::nothrow) int[0] return nullptr, try fix it!"));
+#else
         UE_LOG(JsEnvModule, Warning, TEXT("new (std::nothrow) int[0] return nullptr, try fix it!"));
         MallocWrapper = new FMallocWrapper(GMalloc);
         GMalloc = MallocWrapper;
+#endif
     }
     delete[] Dummy;
 
@@ -178,9 +186,45 @@ void FJsEnvModule::StartupModule()
 #if defined(WITH_NODEJS)
     platform_ = node::MultiIsolatePlatform::Create(4);
 #else
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+#if defined(USING_SINGLE_THREAD_PLATFORM)
+    platform_ = v8::platform::NewSingleThreadedDefaultPlatform_Without_Stl();
+#else
+    platform_ = v8::platform::NewDefaultPlatform_Without_Stl();
+#endif
+#else
+#if defined(USING_SINGLE_THREAD_PLATFORM)
+    platform_ = v8::platform::NewSingleThreadedDefaultPlatform();
+#else
     platform_ = v8::platform::NewDefaultPlatform();
 #endif
+#endif
+#endif
+
+#if PLATFORM_IOS
+    v8::V8::SetFlagsFromString("--jitless --no-expose-wasm");
+#endif
+
+#ifdef WITH_V8_FAST_CALL
+    v8::V8::SetFlagsFromString("--turbo-fast-api-calls");
+#endif
+
+#if defined(USING_SINGLE_THREAD_PLATFORM)
+    v8::V8::SetFlagsFromString("--single-threaded");
+#endif
+
+#if defined(WITH_V8_BYTECODE)
+    v8::V8::SetFlagsFromString("--no-lazy --no-flush-bytecode --no-enable-lazy-source-positions");
+#endif
+
+    // v8::V8::SetFlagsFromString("--expose-gc");
+    // v8::V8::SetFlagsFromString("--no-freeze-flags-after-init");
+
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8::V8::InitializePlatform(platform_);
+#else
     v8::V8::InitializePlatform(platform_.get());
+#endif
     v8::V8::Initialize();
 
 #if defined(WITH_NODEJS)
@@ -204,8 +248,17 @@ void FJsEnvModule::ShutdownModule()
     // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
     // we call this function before unloading the module.
     v8::V8::Dispose();
+#if V8_MAJOR_VERSION > 9
+    v8::V8::DisposePlatform();
+#else
     v8::V8::ShutdownPlatform();
+#endif
 
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8::platform::DeletePlatform_Without_Stl(platform_);
+#endif
+
+#if ENGINE_MAJOR_VERSION < 5 || ENGINE_MINOR_VERSION <= 5
     if (MallocWrapper && MallocWrapper == GMalloc)
     {
         GMalloc = MallocWrapper->InnerMalloc;
@@ -213,9 +266,14 @@ void FJsEnvModule::ShutdownModule()
         MallocWrapper = nullptr;
         UE_LOG(JsEnvModule, Warning, TEXT("GMalloc restored!"));
     }
+#endif
 }
 
 void* FJsEnvModule::GetV8Platform()
 {
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    return reinterpret_cast<void*>(platform_);
+#else
     return reinterpret_cast<void*>(platform_.get());
+#endif
 }

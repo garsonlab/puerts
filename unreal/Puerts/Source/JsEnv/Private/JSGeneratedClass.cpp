@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -10,7 +10,6 @@
 #include "Engine/Blueprint.h"
 #include "JSGeneratedFunction.h"
 #include "JSWidgetGeneratedClass.h"
-#include "JSAnimGeneratedClass.h"
 #include "JSLogger.h"
 
 #define OLD_METHOD_PREFIX "__puerts_old__"
@@ -32,18 +31,6 @@ UClass* UJSGeneratedClass::Create(const FString& Name, UClass* Parent,
         JSGeneratedClass->Constructor = v8::UniquePersistent<v8::Function>(Isolate, Constructor);
         JSGeneratedClass->Prototype = v8::UniquePersistent<v8::Object>(Isolate, Prototype);
         JSGeneratedClass->ClassConstructor = &UJSWidgetGeneratedClass::StaticConstructor;
-        Class = JSGeneratedClass;
-    }
-    else if (Cast<UAnimBlueprintGeneratedClass>(Parent))
-    {
-        auto JSGeneratedClass = NewObject<UJSAnimGeneratedClass>(Outer, *Name, RF_Public);
-#ifdef THREAD_SAFE
-        JSGeneratedClass->Isolate = Isolate;
-#endif
-        JSGeneratedClass->DynamicInvoker = DynamicInvoker;
-        JSGeneratedClass->Constructor = v8::UniquePersistent<v8::Function>(Isolate, Constructor);
-        JSGeneratedClass->Prototype = v8::UniquePersistent<v8::Object>(Isolate, Prototype);
-        JSGeneratedClass->ClassConstructor = &UJSAnimGeneratedClass::StaticConstructor;
         Class = JSGeneratedClass;
     }
     else
@@ -182,6 +169,11 @@ void UJSGeneratedClass::Override(v8::Isolate* Isolate, UClass* Class, UFunction*
         Class->Children = Function;
     }
     Class->AddFunctionToFunctionMap(Function, Function->GetFName());
+
+    if (Class->HasAnyInternalFlags(EInternalObjectFlags::RootSet) || GUObjectArray.IsDisregardForGC(Class))
+    {
+        Function->AddToRoot();
+    }
 }
 
 UFunction* UJSGeneratedClass::Mixin(v8::Isolate* Isolate, UClass* Class, UFunction* Super,
@@ -189,26 +181,35 @@ UFunction* UJSGeneratedClass::Mixin(v8::Isolate* Isolate, UClass* Class, UFuncti
 {
     bool Existed = Super->GetOuter() == Class;
 
-    if (Existed)
+    if (!Existed)
     {
-        auto MaybeJSFunction = Cast<UJSGeneratedFunction>(Super);
-        if (!MaybeJSFunction)
+        UFunction* Tmp =
+            Cast<UFunction>(StaticDuplicateObject(Super, Class, Super->GetFName(), RF_AllFlags, UFunction::StaticClass()));
+        Tmp->SetSuperStruct(Super);
+        Tmp->Next = Class->Children;
+        Class->Children = Tmp;
+        Class->AddFunctionToFunctionMap(Tmp, Tmp->GetFName());
+        Tmp->SetFlags(Tmp->GetFlags() | RF_Transient);
+        Super = Tmp;
+        Super->ClearInternalFlags(EInternalObjectFlags::Native);
+        Super->StaticLink(true);
+    }
+    auto MaybeJSFunction = Cast<UJSGeneratedFunction>(Super);
+    if (!MaybeJSFunction)
+    {
+        MaybeJSFunction = UJSGeneratedFunction::GetJSGeneratedFunctionFromScript(Super);
+    }
+    if (MaybeJSFunction)
+    {
+        if (Warning)
         {
-            MaybeJSFunction = UJSGeneratedFunction::GetJSGeneratedFunctionFromScript(Super);
+            UE_LOG(Puerts, Warning, TEXT("Try to mixin a function[%s:%s] already mixin by anthor vm"), *Class->GetName(),
+                *Super->GetName());
         }
-        if (MaybeJSFunction)
-        {
-            if (Warning)
-            {
-                UE_LOG(Puerts, Warning, TEXT("Try to mixin a function[%s:%s] already mixin by anthor vm"), *Class->GetName(),
-                    *Super->GetName());
-            }
-            return MaybeJSFunction;
-        }
+        return MaybeJSFunction;
     }
 
-    const FString FunctionName =
-        Existed ? *FString::Printf(TEXT("%s%s"), *Super->GetName(), TEXT(MIXIN_METHOD_SUFFIX)) : Super->GetName();
+    const FString FunctionName = *FString::Printf(TEXT("%s%s"), *Super->GetName(), TEXT(MIXIN_METHOD_SUFFIX));
 
     // "Failed to bind native" warning
     Class->AddNativeFunction(*FunctionName, &UJSGeneratedFunction::execCallMixin);
@@ -226,19 +227,10 @@ UFunction* UJSGeneratedClass::Mixin(v8::Isolate* Isolate, UClass* Class, UFuncti
         }
     }
 
-    if (!Existed)
-    {
-        // UE_LOG(LogTemp, Error, TEXT("new function %s"), *FunctionName.ToString());
-        Function->SetSuperStruct(Super);
-    }
-    else
-    {
-        // UE_LOG(LogTemp, Error, TEXT("replace function %s"), *FunctionName.ToString());
-        Function->SetSuperStruct(Super->GetSuperStruct());
-    }
+    Function->SetSuperStruct(Super->GetSuperStruct());
 
     Function->DynamicInvoker = DynamicInvoker;
-    Function->FunctionTranslator = std::make_unique<PUERTS_NAMESPACE::FFunctionTranslator>(Existed ? Super : Function, false);
+    Function->FunctionTranslator = std::make_unique<PUERTS_NAMESPACE::FFunctionTranslator>(Super, false);
     Function->TakeJsObjectRef = TakeJsObjectRef;
 
     Function->Next = Class->Children;
@@ -251,21 +243,19 @@ UFunction* UJSGeneratedClass::Mixin(v8::Isolate* Isolate, UClass* Class, UFuncti
     Function->StaticLink(true);
     Function->ClearInternalFlags(EInternalObjectFlags::Native);
 
-    if (Class->HasAnyInternalFlags(EInternalObjectFlags::RootSet))
+    if (Class->HasAnyInternalFlags(EInternalObjectFlags::RootSet) || GUObjectArray.IsDisregardForGC(Class))
     {
         Function->AddToRoot();
     }
 
-    if (Existed)
-    {
-        Function->Original = Super;
-        Function->OriginalFunc = Super->GetNativeFunc();
-        Function->OriginalFunctionFlags = Super->FunctionFlags;
-        Super->FunctionFlags |= FUNC_Native;    //让UE不走解析
-        Super->SetNativeFunc(&UJSGeneratedFunction::execCallMixin);
-        Class->AddNativeFunction(*Super->GetName(), &UJSGeneratedFunction::execCallMixin);
-        UJSGeneratedFunction::SetJSGeneratedFunctionToScript(Super, Function);
-    }
+    Function->Original = Super;
+    Function->OriginalFunc = Super->GetNativeFunc();
+    Function->OriginalFunctionFlags = Super->FunctionFlags;
+    Super->FunctionFlags |= FUNC_Native;    //让UE不走解析
+    Super->SetNativeFunc(&UJSGeneratedFunction::execCallMixin);
+    Class->AddNativeFunction(*Super->GetName(), &UJSGeneratedFunction::execCallMixin);
+    UJSGeneratedFunction::SetJSGeneratedFunctionToScript(Super, Function);
+
     return Function;
 }
 
@@ -355,7 +345,8 @@ void UJSGeneratedClass::Restore(UClass* Class)
     Class->ClearFunctionMapsCaches();
     for (TObjectIterator<UClass> It; It; ++It)
     {
-        if (It->IsChildOf(Class) && !It->HasAnyClassFlags(CLASS_Abstract))
+        if (Class != *It && It->IsChildOf(Class) && !It->HasAnyClassFlags(CLASS_Abstract) &&
+            !It->GetName().StartsWith(TEXT("REINST_")))
         {
             It->ClearFunctionMapsCaches();
         }

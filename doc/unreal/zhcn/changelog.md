@@ -1,3 +1,212 @@
+### v1.0.9 2025年7月15日
+
+####  新增特性
+
+* ue 5.6.0兼容
+
+#### 优化
+
+* 优化ToFString()为直接utf16内存拷贝. (#2010)
+
+#### 变更
+
+* 由于在一些平台下不稳定，移除v8 10.6.194的支持
+
+#### bug修复
+
+* 修复mac arm64下nodejs backend的编译错误
+
+* 打开THREAD_SAFE后，UDynamicDelegateProxy::ProcessEvent可能访问无效的Isolate fix #2045
+
+* 开启THREAD_SAFE宏后，C++持有JS里的函数引用，可能会因为虚拟机生命周期和函数引用不一致而崩溃 fix #2048 
+
+* 解决带参数事件，如果蓝图没声明，mixin去覆盖，回调时崩溃的问题 fix #1947
+
+* d.ts生成报错解决(#2081)
+
+* mixin复制的父类函数清除EInternalObjectFlags::Native标记 fix #2118
+
+* UE.Object.Load 入参是无效 ObjectPath 时，避免意外触发 FlushAsyncLoading (#2119)
+
+* 异步加载时，继承ue类功能js绑定失败导致没有回调的问题
+
+* 修复静态绑定中作为参数的std::function类型的参数如果包含TArray等容器类的时候，自动生成的TS声明的错误 (#2130)
+
+
+### v1.0.8 2025年3月26日
+
+####  新增特性
+
+* 容器新增UE.BuiltinDouble，fix #1775
+
+* v8后端支持字节码
+
+* 支持Editor Only Properties 增加_EditorOnly后缀 (#1802)
+
+* 支持UE 5.5
+
+* v8后端添加websocket的支持、
+
+* 模板绑定添加对getter、setter的支持
+
+* ue 5.x 添加对FHitResult::GetActor的模板绑定
+
+* FVector等几个系统USTUCT改为用模板绑定，以解决ue5下的精度丢失问题，fix #1904
+
+* 支持仅setter的属性
+
+* 支持不在Context目录的蓝图加载 #1962
+
+#### 优化
+
+* esm module两次读文件的问题，fix #1779
+
+* 反射new，Class.Load, Class.Find, Class.StaticClass加上关联的UStruct是否无效的检查
+
+* weakfieldl有效的时候,proeprty可能无效 (#1803)
+
+* 模板绑定利用FObjectCacheNode的UserData减少一次原生c++里的map插入和删除
+
+* 自动拷贝Plugin目录下的.d.ts到 Typing目录，以避免维护两份.d.ts (#1908)
+
+* 尽可能减少std::string的使用，减少此类问题（https://github.com/Tencent/puerts/issues/1936）发生的概率
+
+* 对于原生cpp绑定，若未绑定构造函数，则在ts声明中加入abstract标记，可以在ts中尝试构造时提示报错 (#1971)
+
+* UE和CPP模块加上__esModule=false
+
+#### 变更
+
+* 移除FJsEnv::Start直接Eval脚本的能力
+
+* UStruct指针nullptr时，返回js null，另外UObject，纯c++对象都修改为返回null（之前是undefined），fix #1834
+
+
+#### bug修复
+
+* 修正UE.BuiltinBool访问失败的问题
+
+* 解决模板绑定const script_type *参数崩溃的问题，(除了const char*外)映射到`$Ref<T>`，相关issue： #1793
+
+* 解决模板绑定返回std::string&会调用移动构造的问题，见issue： #1793
+
+* 恢复生成蓝图变量的默认Flags，与过去版本保持一致 (#1814)
+
+* 自动生命周期管理的puerts.toDelegate接口产生的UDynamicDelegateProxy在GC时可能崩溃 (#1819)
+
+* SoftObjectPtr改为通过InstanceTemplate创建对象，规避backend-quickjs的这个bug： puerts/backend-quickjs#20 ，fix #1907
+
+* 解决模板绑定const ustruct *匹配多个特化的问题（C2752） fix #1917
+
+* 解决模板绑定对于const SomeClass &参数的默认值会读取到已经释放栈变量的问题，fix #1924
+
+* 静态绑定IsInstanceOf得先判断是不是Object，fix #1929
+
+* 处理内存重用导致的Check failed: Handle not reset in first callback. See comments on |v8::WeakCallbackInfo| fix #1930
+
+* 修复静态绑定: 若结构体没有绑定构造函数则不会生成构造函数定义 (#1951)
+
+* JSObject拷贝构造和赋值重载由于没有声明HandleScope导致崩溃的问题
+
+* 修复 TCHAR 类型生成的声明错误 (#1977)
+
+* 解决mixin的inherit = true时，不继承蓝图组件层级的问题 fix #1985
+
+* 发生unhandledRejection时，应清理WeakMap fix #1991 避免内存释放过慢
+
+* 修复绑定当帧销毁的对象身上的 Delegate，有概率触发崩溃的问题
+
+* 修复disregardgc情况下的crash (#1997) fix #1415
+
+* 类静态成员规避FName导致的大小写问题 fix #1882
+
+* quickjs默认256k的栈，有些场景会stackoverflow（比如跑tsc），提升到1M
+
+* NewArray报t.hasOwnProperty is not a function fix #2001
+
+### v1.0.7 2024年6月25日
+
+#### 新增特性
+
+* 静态绑定的Register支持自定义析构
+
+* 增加一个宏，允许ts不持有ueobject (#1660) 
+
+* JsEnv.Build.cs增加KeepUObjectReference配置，支持js不强引用uobject
+
+* JsEnv.Build.cs增加SingleThreaded选项，用于指定v8别开线程池
+
+* 支持V8 10.6.194
+
+#### 优化
+
+* 只在有文件更改的时候广播 (#1637)
+
+* 如果是插件的蓝图类，生成到ue.d.ts文件
+
+* 如果生成Delegate调用器失败打印错误信息
+
+* 修复静态函数每次调用的时候会查两次hash表 (#1654)
+
+* 导出C++的类的Interface函数 (#1681) 
+
+* 生成默认值元信息头文件（InitParamDefaultMetas.inl）保证顺序，以免每次都重新编译FunctionTranslator.cpp
+
+* UE 5.4的一些编译错误
+
+* 将蓝图中显示的变量顺序与TS文件中定义的变量顺序保持一致 (#1740) 
+
+* 去除bEnableUndefinedIdentifierWarnings的依赖，可以支持在ue5.3+下开PCH
+
+* 默认的tsconfig.json添加useDefineForClassFields: false，优化8.4、9.4版本v8的性能
+
+
+#### 变更
+
+
+#### bug修复
+
+* 修复这个commit导致ue5.3编译报GenericplatformProcess的错误：9258c33
+
+* 修正pesapi静态绑定，对puerts::Object赋值为空仍然持有context引用的问题
+
+* Mixin 基类，PIE第二次启动后会崩溃
+
+* 确保unhandledRejection() 在所有microtasks跑完后才执行
+
+* PaddingKill状态的对象在虚拟机释放是没有回收 UEGC时崩溃 (#1645)
+
+* 修复在IWYU模式下的编译报错问题 (#1648) 
+
+* AddToDelegate 区分 SingleDeleagte 和MultipleDelegate，解决单播变成多播的问题
+
+* 在js绑定delegate时，应该考虑在c++侧被clear的情况，fix #1653
+
+* 不必要的Reset导致内存泄露，Release传入的地址是null (#1652)
+
+* 解决如果有多个plugin使用了asio，asio_signal_handler会符号冲突的问题
+
+* asio在C++ 20下编译报错的问题
+
+* 静态绑定的报错解决（找不到API）
+
+* RegisterTArray 支持指针成员类型 (#1657) 
+
+* mixin基类的objectTakeByNative设置同步到其子类
+
+* 解决错误的将父类的hideCategories赋值给蓝图以及错误的覆盖了ts收集到的hideCategories元数据
+
+* 把Engine也加入扫描目录，生成相应的ts声明，fix #1727
+
+* 移除已弃用的configname避免出现没有任何改动也会进行重新编译保存的bug (#1730)
+
+* 增加对metadata的修改检查来修复删除元数据不会被检测为更改而不重新编译的问题 (#1733)
+
+* 修复删除uproperty中Property Specifiers不生效的问题 (#1744) 
+
+* 增加对未能正确添加变量的情况进行提示 (#1748)
+
+
 ### v1.0.6p1 2024年1月16日
 
 #### bug修复

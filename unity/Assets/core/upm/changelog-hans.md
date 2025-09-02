@@ -6,6 +6,73 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 you can get the english version change log at [Github Release](https://github.com/Tencent/puerts/releases)
 
+## [2.2.2] - 2025-5-13
+1. 解决webgl打包工具windows下会重复npm i安装的问题
+2. 微信小游戏一键导出的支持
+3. 解决“token overflowed internal buffer”编译错误，并加入DisallowedType的判断，wrap引用了值类型但没声明的情况，fix #2039
+4. webgl环境没有eval的异常不直接抛在js，这会导致程序halt
+5. 不再限制webgl下必须得用Puerts.WebGL.MainEnv.Get来创建JsEnv
+6. 支持Unity生成的“Faster (smaller) builds”选项（对应微信导出工具的il2cpp optimize size ） (#2046)
+7. 修正webgl环境下，原生setTimeout回调中访问C#报错的问题
+8. 优化掉类名和字段名的存放，方法名改为存放const char*指针，节省内存
+
+## [2.2.1] - 2025-4-25
+1. webgl也支持il2cpp优化特性了，并默认打开
+2. webgl版本通过PostBuild自动打包js资源，自动修改index.html
+3. webgl版本Editor不再依赖nodejs backend
+4. il2cpp优化特性通过utf16传递支持优化字符串传输性能
+6. il2cpp优化特性一些和之前版本的参数传递，判断不一致的修复
+7. 解决泛型实例递归引用自己导致生成代码死循环（上个提交把所有泛型类都过滤了），fix #2015
+8. il2cpp优化下，js函数转不了JsObject的问题，fix #2012
+
+## [2.2.0] - 2025-3-18
+1. native_src_il2cpp合并到native_src
+2. il2cpp优化特性在android下不再要求静态库连接（有些unity不支持）
+3. il2cpp生成wrapper代码无需另外编译进plugins
+4. il2cpp支持0 gc反射
+5. quickjs backend以及mult backend支持il2cpp优化
+6. 简化quickjs backend和mult backend的编译，直接引入quick-ng源码编译
+7. 修正il2cpp优化的复合类型ref从c#到js的传递，fix #1886
+8. 除了ios和webgl之外所有平台的il2pp打包都默认开启il2cpp优化
+
+## [2.1.1] - 2024-10-25
+1. 鸿蒙平台禁用jit
+2. 高版本v8兼容
+3. 升级quickjs到最新版本
+4. v8 backend，quickjs添加websocket支持
+5. 添加支持模块lazyload和自动卸载的cjs实现。
+6. 解决plugin定义THREAD_SAFE宏，v8加锁不全的问题
+7. 添加ns（Nintendo Switch）的编译支持
+8. 解决clearmodulecache的内存泄露
+9. android下默认使用剪裁版本
+
+## [2.1.0] - 2024-06-25
+1. 功能：支持JsEnv参数指定Backend是V8还是quickjs；
+2. 修复：C#中执行ExecuteModule时如果被加载模块有语法错误Unity会崩溃
+3. 功能：让puer.getLastException可以拿到ExecuteModule的错误 (#1686)
+4. 优化：重构quickjs的esm，实现同一个函数中不会出现quickjs api和v8 api混用的情况，改进之前esm强依赖quickjs backend某版本实现导致quickjs backend无法升级情况。并升级quickjs backend。
+5. 修复：linux下nodejs后端找不到符号的问题
+6. 修复：加载空module文件失败的问题，fix #1700
+7. 优化：修正值类型参数的gc问题，fix #1527
+8. 修复：解决quickjs版本的String leaks
+9. 功能：鸿蒙系统编译支持
+10. 修复：Encoding.UTF8.GetBytes返回byte是不加0结尾的，需要手动加，否则AOT下会崩溃，fix #1691
+11. 功能：编辑器下创建GenericDelegate时记录js堆栈，在CheckLiveness失败时附带堆栈方便定位 (#1704) 
+12. 功能：debug 构建时默认开启调试器支持 (#1707)
+13. 功能：新增v8 10.6.194的支持
+14. 修复：避免FunctionTemplate同key的属性， fix #1714
+15. 优化：console.log在非unity环境应该通过Console.Error输出
+16. 优化：重构v8 esm实现，支持top-level-await
+17. 功能：添加v8.getHeapStatistics，v8.getHeapSpaceStatistics
+18. 优化：不允许对静态函数执行new操作符
+19. 修复：支持Explicit Interface Implementation，fix #1741
+20. 修复：quickjs后端js throw null/unfined会导致崩溃，fix #1747
+21. 优化：$Ref<T>中去掉value字段，fix #1752
+22. 优化：调试CtxGroupID每次递增（之前固定一个ID可能多JsEnv，单JsEnv多inspector可能有问题）
+
+## [2.0.5] - 2024-05-07
+1. 修复: 添加几个zombieyang/puerts_unity_webgl_demo#53用到的api
+
 ## [2.0.4] - 2024-01-09
 1. 修复：调用extension方法并且方法带out或者ref参数会报错
 2. 修复：将JSObject赋值为null会报错

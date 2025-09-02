@@ -1,6 +1,6 @@
 ﻿/*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -132,6 +132,8 @@ public:
     virtual void ReturnFunction(const void* Info, void* Function) override;
 
     virtual void ReturnCSharpFunctionCallback(const void* Info, puerts::FuncPtr Callback, int64_t Data) override;
+    
+    virtual void ReturnCSharpFunctionCallback(const void* Info, puerts::FuncPtr Callback, puerts::FuncPtr Finalize, int64_t Data) override;
 
     virtual void ReturnJSObject(const void* Info, void* Object) override;
     //-------------------------- end js call cs --------------------------
@@ -202,7 +204,11 @@ public:
 
     //-------------------------- end debug --------------------------
     
-private:
+    virtual void TerminateExecution() override
+    {
+        jsEngine.TerminateExecution();
+    }
+    
     PUERTS_NAMESPACE::JSEngine jsEngine;
 };
 
@@ -805,6 +811,25 @@ void V8Plugin::ReturnCSharpFunctionCallback(const void* pInfo, puerts::FuncPtr C
     Info.GetReturnValue().Set(jsEngine.ToTemplate(Isolate, false, (PUERTS_NAMESPACE::CSharpFunctionCallback)Callback, Data)->GetFunction(Context).ToLocalChecked());
 }
 
+void V8Plugin::ReturnCSharpFunctionCallback(const void* pInfo, puerts::FuncPtr Callback, puerts::FuncPtr Finalize, int64_t Data)
+{
+    v8::Isolate* Isolate = jsEngine.MainIsolate;
+    const v8::FunctionCallbackInfo<v8::Value>& Info =  *(const v8::FunctionCallbackInfo<v8::Value>*)pInfo;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
+    v8::Isolate::Scope IsolateScope(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    v8::Local<v8::Context> Context = jsEngine.ResultInfo.Context.Get(Isolate);
+    v8::Context::Scope ContextScope(Context);
+
+    auto Func = jsEngine.CreateFunction((PUERTS_NAMESPACE::CSharpFunctionCallback)Callback, (PUERTS_NAMESPACE::JsFunctionFinalizeCallback)Finalize, Data);
+    if (!Func.IsEmpty())
+    {
+        Info.GetReturnValue().Set(Func.ToLocalChecked());
+    }
+}
+
 void V8Plugin::ReturnJSObject(const void* pInfo, void* pObject)
 {
     v8::Isolate* Isolate = jsEngine.MainIsolate;
@@ -892,6 +917,9 @@ void V8Plugin::PushObjectForJSFunction(void* pFunction, int ClassID, void* Ptr)
     FValue Value;
     Value.Type = puerts::NativeObject;
     auto Isolate = Function->ResultInfo.Isolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
     v8::Isolate::Scope IsolateScope(Isolate);
     v8::HandleScope HandleScope(Isolate);
     v8::Local<v8::Context> Context = Function->ResultInfo.Context.Get(Isolate);
@@ -1214,3 +1242,64 @@ namespace puerts
     }
 #endif
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+#ifdef WITH_IL2CPP_OPTIMIZATION
+
+#if WITH_V8
+V8_EXPORT pesapi_env_ref GetV8PapiEnvRef(puerts::IPuertsPlugin* plugin)
+{
+    v8::Isolate* Isolate = static_cast<PUERTS_NAMESPACE::V8Plugin*>(plugin)->jsEngine.MainIsolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
+    v8::Isolate::Scope IsolateScope(Isolate);
+    auto jsEnv = puerts::FV8Utils::IsolateData<puerts::JSEngine>(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    v8::Local<v8::Context> Context = jsEnv->BackendEnv.MainContext.Get(Isolate);
+    v8::Context::Scope ContextScope(Context);
+    
+    auto env = reinterpret_cast<pesapi_env>(*Context); //TODO: 实现相关
+    return v8impl::g_pesapi_ffi.create_env_ref(env);
+}
+
+V8_EXPORT pesapi_ffi* GetV8FFIApi()
+{
+    return &v8impl::g_pesapi_ffi;
+}
+#endif
+
+#if WITH_QUICKJS
+V8_EXPORT pesapi_env_ref GetQjsPapiEnvRef(puerts::IPuertsPlugin* plugin)
+{
+    v8::Isolate* Isolate = static_cast<PUERTS_NAMESPACE::V8Plugin*>(plugin)->jsEngine.MainIsolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
+    v8::Isolate::Scope IsolateScope(Isolate);
+    auto jsEnv = PUERTS_NAMESPACE::FV8Utils::IsolateData<PUERTS_NAMESPACE::JSEngine>(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    v8::Local<v8::Context> Context = jsEnv->BackendEnv.MainContext.Get(Isolate);
+    v8::Context::Scope ContextScope(Context);
+    
+    auto ctx = Context->context_;
+    return pesapi::qjsimpl::g_pesapi_ffi.create_env_ref(reinterpret_cast<pesapi_env>(ctx));
+}
+
+V8_EXPORT pesapi_ffi* GetQjsFFIApi()
+{
+    return &pesapi::qjsimpl::g_pesapi_ffi;
+}
+#endif
+
+
+#endif
+
+
+#ifdef __cplusplus
+}
+#endif

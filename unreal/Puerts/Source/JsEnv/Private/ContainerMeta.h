@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -31,10 +31,11 @@ enum BuiltinType
     TByte = 1,
     TInt = 2,
     TFloat = 3,
-    TInt64 = 4,
-    TString = 5,
-    TText = 6,
-    TName = 7,
+    TDouble = 4,
+    TInt64 = 5,
+    TString = 6,
+    TText = 7,
+    TName = 8,
     MaxBuiltinType
 };
 

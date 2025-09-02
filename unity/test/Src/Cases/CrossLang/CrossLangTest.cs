@@ -4,6 +4,54 @@ using System.Runtime.InteropServices;
 
 namespace Puerts.UnitTest
 {
+    [UnityEngine.Scripting.Preserve]
+    public class TestGC
+    {
+        public static int ObjCount = 0;
+
+        [UnityEngine.Scripting.Preserve]
+        public TestGC()
+        {
+            ++ObjCount;
+        }
+
+        [UnityEngine.Scripting.Preserve]
+
+        ~TestGC()
+        {
+            --ObjCount;
+        }
+    }
+
+    [UnityEngine.Scripting.Preserve]
+    public struct TakeTestGC
+    {
+        [UnityEngine.Scripting.Preserve]
+        public TakeTestGC(int n)
+        {
+            testGC = new TestGC();
+        }
+
+        public TestGC testGC;
+    }
+
+    [UnityEngine.Scripting.Preserve]
+    public class OverloadTestObject
+    {
+        public static int LastCall = 999;
+
+        [UnityEngine.Scripting.Preserve]
+        public void WithObjectParam(string str)
+        {
+            LastCall = 1;
+        }
+
+        [UnityEngine.Scripting.Preserve]
+        public void WithObjectParam(object str)
+        {
+            LastCall = 2;
+        }
+    }
 
     public class TestObject
     {
@@ -11,6 +59,22 @@ namespace Puerts.UnitTest
         public TestObject(int val)
         {
             value = val;
+        }
+        
+        static int tmp;
+        
+        public int WriteOnly
+        {
+            set {
+                tmp = value;
+            }
+        }
+        
+        public static int StaticWriteOnly
+        {
+            set {
+                tmp = value;
+            }
         }
     }
     public struct TestStruct
@@ -23,6 +87,34 @@ namespace Puerts.UnitTest
             value = val;
             value2 = 0;
             value3 = 0;
+        }
+    }
+    [UnityEngine.Scripting.Preserve]
+    public struct TestStruct2
+    {
+        public int v1;
+        public int v2;
+        public string v3;
+
+        [UnityEngine.Scripting.Preserve]
+        public TestStruct2(int p1, int p2, string p3)
+        {
+            v1 = p1;
+            v2 = p2;
+            v3 = p3;
+        }
+
+        [UnityEngine.Scripting.Preserve]
+        public override string ToString()
+        {
+            return v1 + ":" + v2 + ":" + v3;
+        }
+
+
+        [UnityEngine.Scripting.Preserve]
+        public string GetString()
+        {
+            return v1 + ":" + v2 + ":" + v3;
         }
     }
     [StructLayout(LayoutKind.Sequential)]
@@ -54,6 +146,11 @@ namespace Puerts.UnitTest
         [UnityEngine.Scripting.Preserve] A = 1,
         [UnityEngine.Scripting.Preserve] B = 213
     }
+
+    public class NewObject
+    {
+
+    }
    
     [UnityEngine.Scripting.Preserve]
     public class CrossLangTestHelper
@@ -70,6 +167,21 @@ namespace Puerts.UnitTest
         public TestEnum GetEnum()
         {
             return TestEnum.B;
+        }
+
+        [UnityEngine.Scripting.Preserve]
+        public TestEnum[] EnumArray = { TestEnum.A, TestEnum.B };
+
+        [UnityEngine.Scripting.Preserve]
+        public static void TestEnumCheck(string a, TestEnum e = TestEnum.A, int b = 10) // 有默认值会促使其检查参数类型
+        {
+
+        }
+
+        [UnityEngine.Scripting.Preserve]
+        public NewObject PushObject()
+        {
+            return new NewObject();
         }
     }
     public unsafe class TestHelper
@@ -126,7 +238,7 @@ namespace Puerts.UnitTest
 
         public TestHelper()
         {
-#if UNITY_EDITOR || !EXPERIMENTAL_IL2CPP_PUERTS
+#if UNITY_EDITOR || PUERTS_DISABLE_IL2CPP_OPTIMIZATION
             var env = UnitTestEnv.GetEnv();
             env.UsingFunc<int>();
             env.UsingFunc<int, int>();
@@ -218,6 +330,30 @@ namespace Puerts.UnitTest
             return "abcdefg";
         }
 
+        public string UnicodeStr(string str)
+        {
+            AssertAndPrint("UnicodeStr", str, "你好");
+            return "小马哥";
+        }
+
+        public string PassStr(string str)
+        {
+            return str;
+        }
+        public void PassStr(string str, int a)
+        {
+
+        }
+
+        public TestHelper PassObj(TestHelper test)
+        {
+            return test;
+        }
+
+        public void PassObj(TestHelper test, int a)
+        {
+        }
+
         public string stringTestField = null;
         protected string _stringTestProp = null;
         public string stringTestProp 
@@ -298,6 +434,11 @@ namespace Puerts.UnitTest
             set { _bigintTestPropStatic = value; }
         }
 
+        public ulong GetBigULong()
+        {
+            return ((ulong)long.MaxValue) + 1;
+        }
+
         public void BigintTestCheckMemberValue()
         {
             AssertAndPrint("CSBigintTestField", bigintTestField, 9007199254740987);
@@ -338,6 +479,7 @@ namespace Puerts.UnitTest
             AssertAndPrint("CSArrayBufferTestProp", arrayBufferTestProp.Bytes[0], 192);
             AssertAndPrint("CSArrayBufferTestFieldStatic", arrayBufferTestFieldStatic.Bytes[0], 192);
             AssertAndPrint("CSArrayBufferTestPropStatic", arrayBufferTestPropStatic.Bytes[0], 192);
+            arrayBufferTestPropStatic.Bytes[0] = 193;
         }
         /**
         * 判断引用即可
@@ -474,16 +616,16 @@ namespace Puerts.UnitTest
         /**
         * JSObject
         */
-        public JSObject jsObjectTestField = default(JSObject);
-        protected JSObject _jsObjectTestProp = default(JSObject);
-        public JSObject jsObjectTestProp 
+        public ScriptObject jsObjectTestField = default(ScriptObject);
+        protected ScriptObject _jsObjectTestProp = default(ScriptObject);
+        public ScriptObject jsObjectTestProp 
         {
             get { return _jsObjectTestProp; }
             set { _jsObjectTestProp = value; }
         }
-        public static JSObject jsObjectTestFieldStatic = default(JSObject);
-        protected static JSObject _jsObjectTestPropStatic = default(JSObject);
-        public static JSObject jsObjectTestPropStatic
+        public static ScriptObject jsObjectTestFieldStatic = default(ScriptObject);
+        protected static ScriptObject _jsObjectTestPropStatic = default(ScriptObject);
+        public static ScriptObject jsObjectTestPropStatic
         {
             get { return _jsObjectTestPropStatic; }
             set { _jsObjectTestPropStatic = value; }
@@ -495,7 +637,7 @@ namespace Puerts.UnitTest
             AssertAndPrint("CSJSObjectTestFieldStatic", jsObjectTestFieldStatic.Get<string>("puerts") == "niubi");
             AssertAndPrint("CSJSObjectTestPropStatic", jsObjectTestPropStatic.Get<string>("puerts") == "niubi");
         }
-        public JSObject JSObjectTestPipeLine(JSObject initialValue, Func<JSObject, JSObject> JSValueHandler) 
+        public ScriptObject JSObjectTestPipeLine(ScriptObject initialValue, Func<ScriptObject, ScriptObject> JSValueHandler) 
         {
             AssertAndPrint("CSGetJSObjectArgFromJS", initialValue.Get<string>("puerts") == "niubi");
             AssertAndPrint("CSGetJSObjectReturnFromJS", JSValueHandler(initialValue) == initialValue);
@@ -521,12 +663,41 @@ namespace Puerts.UnitTest
             AssertAndPrint("InvokeReturnNativeStructTestFunc", srcValue.value, ret.value);
         }
     }
+    
+            
+    public class FooVE
+    {
+        public IFoo foo;
+
+        public FooVE()
+        {
+            foo = new FooAccess();
+        }
+        
+        static FooVE _instance;
+
+        public static FooVE Instance()
+        {
+            if (_instance == null) _instance = new FooVE();
+            return _instance;
+        }
+    }
+
+    public interface IFoo
+    {
+        float width { get; }
+    }
+
+    internal class FooAccess : IFoo
+    {
+        float IFoo.width => 125f; // Note the explicit interface `IFoo.`
+    }
 
     [TestFixture]
     public class CrossLangTest
     {
         [Test]
-        public void JSFunctionInstanceTest()
+        public void ScriptFunctionInstanceTest()
         {
             var jsEnv = UnitTestEnv.GetEnv();
             jsEnv.Eval(@"
@@ -538,8 +709,7 @@ namespace Puerts.UnitTest
 
                     const oFunc = () => 3
                     const rFunc = testHelper.JSFunctionTestPipeLine(oFunc, function (func) {
-                        testHelper.functionTestEndValue = oFunc;
-                        return testHelper.functionTestEndValue;
+                        return oFunc;
                     });
 
                     const evfn = () => 30;
@@ -554,6 +724,42 @@ namespace Puerts.UnitTest
                 })()
             ");
             jsEnv.Tick();
+        }
+        
+        [Test]
+        public void WriteOnlyTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.Eval(@"
+                (function() {
+                    let o = new CS.Puerts.UnitTest.TestObject(1);
+                    let v = o.WriteOnly;
+                    let sv = CS.Puerts.UnitTest.TestObject.StaticWriteOnly
+                })()
+            ");
+            jsEnv.Tick();
+        }
+        
+        [Test]
+        public void NoNewOnStaticFunction()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            try 
+            {
+                jsEnv.Eval(@"
+                    (function() {
+                        const TestHelper = CS.Puerts.UnitTest.TestHelper;
+                        new TestHelper.GetInstance();
+                    })()
+                ");
+            } 
+            catch(Exception e) 
+            {
+                StringAssert.Contains("not a constructor", e.Message);
+                jsEnv.Tick();
+                return;
+            }
+            throw new Exception("unexpected to reach here");
         }
         [Test]
         public void NumberInstanceTest()
@@ -609,6 +815,8 @@ namespace Puerts.UnitTest
                     TestHelper.stringTestFieldStatic = 'Puer'
                     TestHelper.stringTestPropStatic = 'Puer'
                     testHelper.StringTestCheckMemberValue();
+                    const ustr = testHelper.UnicodeStr('你好');
+                    assertAndPrint('UnicodeStr', ustr, '小马哥');
                 })()
             ");
             jsEnv.Tick();
@@ -697,7 +905,9 @@ namespace Puerts.UnitTest
                     testHelper.arrayBufferTestProp = new Uint8Array([192]).buffer
                     TestHelper.arrayBufferTestFieldStatic = new Uint8Array([192]).buffer
                     TestHelper.arrayBufferTestPropStatic = new Uint8Array([192]).buffer
+                    const tmp = TestHelper.arrayBufferTestPropStatic;
                     testHelper.ArrayBufferTestCheckMemberValue();
+                    assertAndPrint('JSArrayBufferShouldBeCopied', new Uint8Array(tmp)[0], 192);
                 })()
             ");
             jsEnv.Tick();
@@ -761,6 +971,24 @@ namespace Puerts.UnitTest
             jsEnv.Tick();
         }
         [Test]
+        public void TestStructAccess()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            // preload
+            jsEnv.Eval(@"
+                 (function() {
+                     return CS.Puerts.UnitTest.TestStruct2
+                 })()
+            ");
+            var res = jsEnv.Eval<string>(@"
+                 (function() {
+                     const s1 = new CS.Puerts.UnitTest.TestStruct2(5345, 3214, 'fqpziq');
+                     return s1.ToString();
+                 })()
+            ");
+            Assert.AreEqual("5345:3214:fqpziq", res);
+        }
+        [Test]
         public void NullableNativeStructInstanceTest()
         {
             var jsEnv = UnitTestEnv.GetEnv();
@@ -819,7 +1047,7 @@ namespace Puerts.UnitTest
             jsEnv.Tick();
         }
         [Test]
-        public void JSObjectInstanceTest()
+        public void ScriptObjectInstanceTest()
         {
             var jsEnv = UnitTestEnv.GetEnv();
             jsEnv.Eval(@"
@@ -878,5 +1106,326 @@ namespace Puerts.UnitTest
             Assert.AreEqual("213 1 213", ret);
             jsEnv.Tick();
         }
+
+        [Test]
+        public void EnumArrayTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var ret = jsEnv.Eval<string>(@"
+                (function() {
+                    const helper = new CS.Puerts.UnitTest.CrossLangTestHelper();
+                    return typeof helper.EnumArray.get_Item(0)
+                })()
+            ");
+            Assert.AreEqual("number", ret);
+            jsEnv.Tick();
+        }
+
+        [Test]
+        public void EnumNameTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var ret = jsEnv.Eval<string>(@"
+                    CS.Puerts.UnitTest.TestEnum[CS.Puerts.UnitTest.TestEnum.A];
+            ");
+            Assert.AreEqual("A", ret);
+            jsEnv.Tick();
+        }
+
+        [Test]
+        public void AccessExplicitnterfaceImplementation()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+
+            var ret = jsEnv.Eval<float>(@"
+                (function() {
+                    const foove = CS.Puerts.UnitTest.FooVE.Instance();
+                    console.log(foove);
+                    console.log(foove.foo);
+                    console.log(foove.foo.width);
+                    return foove.foo.width;
+                })()
+            ");
+            Assert.AreEqual(FooVE.Instance().foo.width, ret);
+            jsEnv.Tick();
+        }
+
+#if !UNITY_WEBGL || UNITY_EDITOR
+        [Test]
+        public void CallDelegateAfterJsEnvDisposed()
+        {
+#if PUERTS_GENERAL
+            var jsEnv = new JsEnv(new TxtLoader());
+#else
+            var jsEnv = new JsEnv(new DefaultLoader());
+#endif
+            var callback = jsEnv.Eval<Action>("() => console.log('hello')");
+            callback();
+            jsEnv.Dispose();
+            Assert.Catch(() =>
+            {
+                callback();
+            });
+        }
+
+        //看上去GC.Collect()对webgl无效，先去掉
+        [Test]
+        public void TestJsGC()
+        {
+#if PUERTS_GENERAL
+            var jsEnv = new JsEnv(new TxtLoader());
+#else
+            var jsEnv = new JsEnv(new DefaultLoader());
+#endif
+            TestGC.ObjCount = 0;
+            var objCount = jsEnv.Eval<int>(@"
+            const randomCount = Math.floor(Math.random() * 50) + 1;
+
+            var objs = []
+            for (let i = 0; i < randomCount; i++) {
+                objs.push(new CS.Puerts.UnitTest.TestGC())
+            }
+            randomCount;
+            ");
+
+            if (jsEnv.Backend is BackendV8 || jsEnv.Backend is BackendNodeJS)
+            {
+                jsEnv.Eval("gc()");
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.AreEqual(objCount, TestGC.ObjCount);
+            Assert.True(objCount > 0);
+
+            jsEnv.Eval("objs = undefined");
+
+            if (jsEnv.Backend is BackendV8 || jsEnv.Backend is BackendNodeJS)
+            {
+                jsEnv.Eval("gc()");
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.AreEqual(0, TestGC.ObjCount);
+
+            jsEnv.Dispose();
+        }
+
+        [Test]
+        public void TestJsStructGC()
+        {
+#if PUERTS_GENERAL
+            var jsEnv = new JsEnv(new TxtLoader());
+#else
+            var jsEnv = new JsEnv(new DefaultLoader());
+#endif
+            TestGC.ObjCount = 0;
+            var objCount = jsEnv.Eval<int>(@"
+            const randomCount = Math.floor(Math.random() * 50) + 1;
+
+            var objs = []
+            for (let i = 0; i < randomCount; i++) {
+                objs.push(new CS.Puerts.UnitTest.TakeTestGC(1))
+            }
+            randomCount;
+            ");
+
+            if (jsEnv.Backend is BackendV8 || jsEnv.Backend is BackendNodeJS)
+            {
+                jsEnv.Eval("gc()");
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.AreEqual(objCount, TestGC.ObjCount);
+            Assert.True(objCount > 0);
+
+            jsEnv.Eval("objs = undefined");
+
+            if (jsEnv.Backend is BackendV8 || jsEnv.Backend is BackendNodeJS)
+            {
+                jsEnv.Eval("gc()");
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            Assert.AreEqual(0, TestGC.ObjCount);
+
+            jsEnv.Dispose();
+        }
+#endif
+
+        [Test]
+        public void OverloadTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+
+            jsEnv.Eval(@"
+            (function() {
+            const o = new CS.Puerts.UnitTest.OverloadTestObject();
+            o.WithObjectParam('tt');
+            console.log('call with string ');
+            }) ();
+            ");
+
+            Assert.AreEqual(1, OverloadTestObject.LastCall);
+
+            jsEnv.Eval(@"
+            (function() {
+            const o = new CS.Puerts.UnitTest.OverloadTestObject();
+            o.WithObjectParam(888);
+             console.log('call with int ');
+            }) ();
+            ");
+
+            Assert.AreEqual(2, OverloadTestObject.LastCall);
+        }
+
+        [Test]
+        public void FuncAsJsObject()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var jso = jsEnv.Eval<ScriptObject>(@"
+            (function() {
+                function t(){}
+                return t;
+            }) ();
+            ");
+            Assert.True(jso != null);
+        }
+
+        [Test]
+        public void EnumParamCheck() // https://github.com/Tencent/puerts/issues/2018
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.Eval(@"
+            (function() {
+                CS.Puerts.UnitTest.CrossLangTestHelper.TestEnumCheck('a', 1, 2);
+            }) ();
+            ");
+        }
+
+        [Test]
+        public void PassNullTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.Eval(@"
+                (function() {
+                    const TestHelper = CS.Puerts.UnitTest.TestHelper;
+                    const assertAndPrint = TestHelper.AssertAndPrint.bind(TestHelper);
+
+                    const testHelper = TestHelper.GetInstance();
+                    testHelper.PassStr(null);
+                    testHelper.PassStr(undefined);
+                    testHelper.PassObj(null);
+                    testHelper.PassObj(undefined);
+                    
+                })()
+            ");
+            Assert.Catch(() =>
+            {
+                jsEnv.Eval(@"
+                (function() {
+                    const TestHelper = CS.Puerts.UnitTest.TestHelper;
+                    const assertAndPrint = TestHelper.AssertAndPrint.bind(TestHelper);
+
+                    const testHelper = TestHelper.GetInstance();
+                    testHelper.PassObj('aaaaaa');
+                    
+                })()
+            ");
+            }, "invalid arguments to PassObj");
+            jsEnv.Tick();
+        }
+
+        [Test]
+        public void CastJsFunctionAsTwoDiffDelegate()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.UsingAction<int>();
+            jsEnv.UsingAction<string, long>();
+            var cb1 = jsEnv.Eval<Action<int>>(@"
+            function __GCB(a, b) {
+              __GMSG = `${a}${b}`
+            }
+            __GCB;
+            ");
+            cb1(1);
+            Assert.AreEqual("1undefined", jsEnv.Eval<string>("__GMSG"));
+            var cb2 = jsEnv.Eval<Action<string, long>>("__GCB");
+            cb2("hello", 999);
+            Assert.AreEqual("hello999", jsEnv.Eval<string>("__GMSG"));
+        }
+
+        public delegate string NotGenericTestFunc(long t);
+
+        [Test]
+        public void NotGenericTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.UsingFunc<long, string>();
+            var cb1 = jsEnv.Eval<NotGenericTestFunc>(@"
+            function __NGTF(a) {
+              return `${a}`
+            }
+            __NGTF;
+            ");
+            ;
+            Assert.AreEqual("9999", cb1(9999));
+        }
+
+        [Test]
+        public void BigULongTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            var res = jsEnv.Eval<string>(@"
+                (function() {
+                    const TestHelper = CS.Puerts.UnitTest.TestHelper;
+                    const assertAndPrint = TestHelper.AssertAndPrint.bind(TestHelper);
+                
+                    const testHelper = TestHelper.GetInstance();
+                    const bulong = testHelper.GetBigULong();
+                    assertAndPrint('ULongCmp', 9223372036854775807n < bulong);
+                    return bulong
+                })()
+            ");
+
+            // 9223372036854775808
+            Assert.AreEqual((((ulong)long.MaxValue) + 1).ToString(), res);
+        }
+#if !PUERTS_GENERAL
+        [Test]
+        public void PassDestroyedUnityObjectTest()
+        {
+            var jsEnv = UnitTestEnv.GetEnv();
+            jsEnv.UsingFunc<UnityEngine.Object, bool>();
+            // 无效的UnityEninge.Object会以null的形式传入脚本
+            var is_null = jsEnv.Eval<Func<UnityEngine.Object, bool>>(@"
+function __PDUOTF(o){
+    return o === null;
+}
+__PDUOTF;");
+            Assert.AreEqual(true, is_null(null));
+            UnityEngine.Texture2D tex2D = new UnityEngine.Texture2D(1, 1);
+            try
+            {
+                Assert.AreEqual(false, is_null(tex2D));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(tex2D);
+            }
+            Assert.AreEqual(true, is_null(tex2D));
+        }
+#endif
     }
 }

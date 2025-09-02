@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -13,9 +13,6 @@
 #include "Common.h"
 #include "Log.h"
 #include "V8InspectorImpl.h"
-#if WITH_QUICKJS
-#include "quickjs-msvc.h"
-#endif
 
 #if defined(WITH_NODEJS)
 
@@ -151,6 +148,9 @@ namespace PUERTS_NAMESPACE
         bool ClearModuleCache(v8::Isolate* Isolate, v8::Local<v8::Context> Context, const char* Path);
 
         std::string GetJSStackTrace();
+#if !defined(WITH_QUICKJS)
+        v8::Local<v8::Object> GetV8Extras(v8::Isolate* isolate, v8::Local<v8::Context> context);
+#endif
     };
 
 #if WITH_NODEJS

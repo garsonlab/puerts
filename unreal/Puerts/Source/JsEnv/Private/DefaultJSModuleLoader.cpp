@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -74,6 +74,10 @@ bool DefaultJSModuleLoader::SearchModuleInDir(
     return SearchModuleWithExtInDir(Dir, RequiredModule + ".js", Path, AbsolutePath) ||
            SearchModuleWithExtInDir(Dir, RequiredModule + ".mjs", Path, AbsolutePath) ||
            SearchModuleWithExtInDir(Dir, RequiredModule + ".cjs", Path, AbsolutePath) ||
+#if defined(WITH_V8_BYTECODE)
+           SearchModuleWithExtInDir(Dir, RequiredModule + ".mbc", Path, AbsolutePath) ||
+           SearchModuleWithExtInDir(Dir, RequiredModule + ".cbc", Path, AbsolutePath) ||
+#endif
            SearchModuleWithExtInDir(Dir, RequiredModule / "package.json", Path, AbsolutePath) ||
            SearchModuleWithExtInDir(Dir, RequiredModule / "index.js", Path, AbsolutePath);
 }
